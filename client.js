@@ -23,48 +23,103 @@ function init() {
 /*  socket.on('join', function(data){
     players[data.key] = data.values;
   });*/
-  socket.on('update', function(data){
-    players[data.key] = data.values;
+  socket.on('turn', function(data){
+    world = data;
+    console.log("recieved world");
+    console.log(world);
   });
 
 }
 
 init();
 
-var canvas = document.getElementById("c");
-var ctx = canvas.getContext('2d');
 
-var WIDTH = 20;
-var HEIGHT = 15;
-var img = new Image();
-img.src = "./img.png";
-img.onload = function() {
-  var sx = 0;
-  var sy = 0;
-  var dx = 0;
-  var dy = 0;
-  for (var x = 0; x < WIDTH; x++) {
-    for (var y = 0; y < HEIGHT; y++) {
-      drawImg(rndI(0,3), x, y);
-    }
-  }
+var world = {
+  planets:[]
 };
 
 
-// size of our tile image
-var IMG_W = 4;
-var IMG_H = 4;
+var selectedStart = -1;
+var selectedEnd = -1;
+var selectedTime = 0; // to create sin effect
 
-function drawImg(id, x, y) {
-  var sx = (id % IMG_W) * 8;
-  var sy = Math.floor(id/IMG_W) * 8;
-  ctx.drawImage(img, sx, sy, 8, 8, x*8, y*8, 8, 8);
+var WIDTH = window.innerWidth;
+var HEIGHT = window.innerHeight;
+
+
+var canvas = document.createElement('canvas');
+
+var ctx = canvas.getContext('2d');
+document.body.appendChild(canvas);
+
+resize();
+
+
+
+function loop() {
+  // fill background
+  color("000000");
+  rectF(0, 0, WIDTH, HEIGHT);
+
+  // draw planets
+  align("center");
+  font("14px sans-serif");
+  for (var i = 0; i < world.planets.length; i++) {
+    drawPlanet(i);
+  }
+
+  requestAnimationFrame(loop);
+}
+loop();
+
+
+window.onresize = function(event) {
+  resize();
+};
+function resize() {
+  WIDTH = window.innerWidth;
+  HEIGHT = window.innerHeight;
+  console.log(WIDTH+","+HEIGHT);
+  canvas.width = WIDTH;
+  canvas.height = HEIGHT;
+}
+window.onmousedown = function(event) {
+  var pos = getRelativeCoords(event);
+  // TODO check, that we are the owner
+  selectedStart = getPlanet(pos);
+  selectedTime = 0;
+}
+window.onmousemove = function(event) {
+  if (selectedStart != -1) {
+    var pos = getRelativeCoords(event);
+    var plan = getPlanet(pos);
+    if (plan != selectedStart) {
+      selectedEnd = plan;
+    }
+  }
+}
+window.onmouseup = function(event) {
+  if (selectedStart != -1 && selectedEnd != -1) {
+    // send ships
+    socket.emit('send', {
+      'from': selectedStart,
+      'to': selectedEnd
+    });
+  }
+  selectedStart = -1;
+  selectedEnd = -1;
 }
 
+function getPlanet(pos) {
+  for (var i = 0; i < world.planets.length; i++) {
+    if ((world.planets[i].x - pos.x)*(world.planets[i].x - pos.x) + (world.planets[i].y - pos.y)*(world.planets[i].y - pos.y) < world.planets[i].size*world.planets[i].size) {
+      return i;
+    }
+  }
+  return -1;
+}
 
-ctx.fillStyle="#FF0000";
-
-canvas.addEventListener('click', function(event) {
+canvas.addEventListener('onmousedown', function(event) {
   var pos = getRelativeCoords(event);
   socket.emit("draw", pos);
 }, false);
@@ -76,4 +131,53 @@ function getRelativeCoords(event) {
 
 function test() {
   socket.emit("event", {name: "test"});
+}
+
+
+function drawPlanet(p) {
+  var planet = world.planets[p];
+  color(planet.owner.color);
+  circleF(planet.x, planet.y, planet.size);
+  if (p == selectedStart || p == selectedEnd) {
+    selectedTime++;
+    console.log(selectedTime);
+
+    circle(planet.x, planet.y, (planet.size+Math.abs(Math.sin(selectedTime/10))*5)+2);
+  }
+  color("000000");
+  text(planet.shipCount, planet.x, planet.y);
+}
+
+// canvas functions
+function color(c) {
+  ctx.fillStyle="#" + c;
+  ctx.strokeStyle="#" + c;
+}
+function rect(x, y, w, h) {
+  ctx.rect(x, y, w, h);
+  ctx.stroke();
+}
+function rectF(x, y, w, h) {
+  ctx.rect(x, y, w, h);
+  ctx.fill();
+}
+function circle(x, y, r) {
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0,2*Math.PI);
+  ctx.stroke();
+}
+function circleF(x, y, r) {
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0,2*Math.PI);
+  ctx.fill();
+}
+function font(f) {
+  ctx.font = f;
+}
+function text(t, x, y) {
+  ctx.fillText(t, x, y);
+}
+
+function align(a) {
+  ctx.textAlign = a;
 }
