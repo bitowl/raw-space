@@ -5,4 +5,7 @@ body {
   height: 100%; width: 100%;
   line-height: 0px;
   font-size: 0px;
+  box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  -webkit-box-sizing: border-box;
 }

@@ -3,29 +3,68 @@ log('we started the game');
 var io = require('sandbox-io');
 
 var sockets = [];
-var currentId = 0;
+var secrets = ["gaia"];
+var currentId = 1;
 
 // size of the gamefield
 var WIDTH = 1000;
 var HEIGHT = 1000;
 
 io.on('connection', function(socket){
-  var myid = currentId++;
-  sockets[myid] = socket;
+  var me;
+  socket.on('join', function(data) {
+    var myid = currentId++;
+    sockets[myid] = socket;
+    var secret = Math.random().toString(36).substring(2);
+    secrets[myid] = secret;
+     me ={
+        id: myid,
+        name: data.name, // TODO add security check
+        color: randomColor(80),
+        online: true
+      };
+      world.players.push(me);
+      // create my own planet
+      createPlanet(me, 25, 100);
+      socket.emit('player', me);
+      socket.emit('secret', {'secret': secret});
 
+      update(socket); // send this player an initial game state
+    });
+    socket.on('rejoin', function(data) {
+      for (var i = 0; i < secrets.length; i++) {
+        console.log(data);
+        console.log(secrets[i]+" ==? "+data.secret);
+        if (secrets[i] == data.secret) {
+          // this is us
+          me = world.players[i];
+          me.online = true;
+          socket.emit('player', me);
+          update(socket);
+          sockets[i] = socket;
+
+          return;
+        }
+      }
+      socket.emit('fail', {}); // this secret is probably from an old game
+    });
   socket.on('send', function(data){ // a player wants to send ship
     // TODO check ownership
     var ships = Math.floor(world.planets[data.from].ships * data.amount /100);
     world.planets[data.from].ships -= ships;
-    var turns = 2;
+    var turns = Math.ceil(dist(world.planets[data.from], world.planets[data.to])/100); // ships fly 100px per turn
     world.fleets.push(new Fleet(data.from, data.to, ships, turns));
 
   });
 
   socket.on('disconnect', function(){
+    if (typeof me != "undefined") {
+      me.online = false;
+      console.log("player "+me.name+"("+me.id+") diconnected");
+    }
     // TODO remove this socket from sockets
   });
-  update(socket); // send this player an initial game state
+
 });
 
 var world = {
@@ -37,20 +76,22 @@ var world = {
 
 var gaia = {
   id: 0,
-  color: "cccccc"
+  color: "cccccc",
+  name: "gaia",
+  online: false
 }; // gaia player
 world.players.push(gaia);
 
 
 function init() {
   for (var i = 0; i < 30; i++) {
-    createPlanet(gaia);
+    createPlanet(gaia, rndI(10,30), rndI(0, 20));
   }
 }
 
-function createPlanet(owner) {
+function createPlanet(owner, size, ships) {
   // TODO check that the planet does not collide with others
-  world.planets.push(new Planet(rndI(0,WIDTH),rndI(0,HEIGHT),rndI(10,30), owner.id));
+  world.planets.push(new Planet(rndI(0,WIDTH),rndI(0,HEIGHT), size, owner.id, ships));
 }
 
 function turn() {
@@ -58,8 +99,12 @@ function turn() {
   for (var i = 0; i < world.fleets.length; i++) {
     world.fleets[i].turn();
   }
-
-
+  for (var i = 0; i < world.fleets.length; i++) {
+      if (world.fleets[i].delete) {
+        world.fleets.splice(i,1);
+        i--;
+      }
+    }
   // planets producing
   for (var i = 0; i < world.planets.length; i++) {
     produceShips(world.planets[i]);
@@ -76,6 +121,7 @@ function turn() {
 }
 
 function update(socket) { // update a socket
+  console.log("update");
   socket.emit('turn', world);
 }
 
@@ -86,15 +132,17 @@ turn();
 
 
 // objects
-function Planet(x, y, size, owner) {
+function Planet(x, y, size, owner, ships) {
   this.x = x;
   this.y = y;
   this.size = size;
   this.owner = owner;
-  this.ships = 0;
+  this.ships = ships;
 }
 function produceShips(planet){
-  planet.ships += planet.size; // production per turn defined by size
+  var prod = planet.size / 10;  // production per turn defined by size
+  if (world.players[planet.owner].online) {prod*=2;} // faster production, when you're online
+  planet.ships += Math.floor(prod);
 }
 
 function Fleet(from, to, ships, turns) {
@@ -103,12 +151,18 @@ function Fleet(from, to, ships, turns) {
   this.to = to;
   this.ships = ships;
   console.log(turns+" turns");
-  this.turns = turns;
+  this.justStarted = true;
+  this.turns = turns ;// turns will be decreased by 1 to the actual count in the first turn
+  this.way = turns; // length of the way
 }
 Fleet.prototype.turn = function() {
-  this.turns --;
+  if (this.justStarted) {
+    this.justStarted = false;
+  } else {
+    this.turns --;
+  }
   if (this.turns <= 0) {
-    world.fleets.splice(world.fleets.indexOf(this),1);
+    this.delete = true;
 
     if (world.planets[this.to].owner == this.owner) {
       console.log("shipment");
@@ -130,4 +184,16 @@ Fleet.prototype.turn = function() {
 // utils
 function rndI(min, max) {
   return min + Math.floor(Math.random() * (max - min + 1));
+}
+function dist(a,b) {
+  return Math.sqrt((a.x-b.x)*(a.x-b.x) + (a.y-b.y)*(a.y-b.y));
+}
+function randomColor(brightness){
+  function randomChannel(brightness){
+    var r = 255-brightness;
+    var n = 0|((Math.random() * r) + brightness);
+    var s = n.toString(16);
+    return (s.length==1) ? '0'+s : s;
+  }
+  return randomChannel(brightness) + randomChannel(brightness) + randomChannel(brightness);
 }
