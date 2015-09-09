@@ -1,5 +1,3 @@
-log('we started the game');
-
 var io = require('sandbox-io');
 
 var sockets = [];
@@ -7,13 +5,17 @@ var secrets = ["gaia"];
 var currentId = 1;
 
 // size of the gamefield
-var WIDTH = 1000;
-var HEIGHT = 1000;
+var INITIAL_WIDTH = 1000;
+var INITIAL_HEIGHT = 1000;
 
 io.on('connection', function(socket){
   var me;
   socket.on('join', function(data) {
     if (me) {return;}
+    if (data.name.length > 12) {
+      socket.emit('fail', {message:'name has to be 12 characters or shorter.'})
+      return;
+    }
     var myid = currentId++;
     sockets[myid] = socket;
     var secret = Math.random().toString(36).substring(2);
@@ -49,11 +51,11 @@ io.on('connection', function(socket){
           return;
         }
       }
-      socket.emit('fail', {}); // this secret is probably from an old game
+      socket.emit('fail', {message:''}); // this secret is probably from an old game
     });
   socket.on('send', function(data){ // a player wants to send ship
-    // TODO check ownership
-    var ships = Math.floor(world.planets[data.from].ships * data.amount /100);
+    var ships = Math.floor(world.planets[data.from].ships * Math.min(data.amount,100) /100);
+    if (ships <= 0) {return;} // no ships to send
     world.planets[data.from].ships -= ships;
     var turns = Math.ceil(dist(world.planets[data.from], world.planets[data.to])/100); // ships fly 100px per turn
     world.fleets.push(new Fleet(data.from, data.to, ships, turns));
@@ -73,7 +75,9 @@ io.on('connection', function(socket){
 var world = {
   planets:[],
   fleets:[],
-  players:[]
+  players:[],
+  width: INITIAL_WIDTH,
+  height: INITIAL_HEIGHT
 }
 
 
@@ -95,10 +99,11 @@ function resetMap() {
   world = {
     planets:[],
     fleets:[],
-    players:[gaia]
+    players:[gaia],
+    width: INITIAL_WIDTH,
+    height: INITIAL_HEIGHT
   }
   currentId = 1;
-  WIDTH = HEIGHT = 1000;
   secrets = ['gaia'];
   for (key in sockets) {
     if (sockets[key]) sockets[key].disconnect();
@@ -111,7 +116,7 @@ function resetMap() {
 
 
 function init() {
-  for (var i = 0; i < 1; i++) {
+  for (var i = 0; i < 30; i++) {
     createPlanet(gaia, rndI(10,30), rndI(0, 20));
   }
   // start the game loop
@@ -120,7 +125,28 @@ function init() {
 
 function createPlanet(owner, size, ships) {
   // TODO check that the planet does not collide with others
-  world.planets.push(new Planet(rndI(size,WIDTH-size),rndI(size,HEIGHT-size), size, owner.id, ships));
+  var x = rndI(size,world.width-size);
+  var y = rndI(size,world.height-size);
+
+  for (var i = 0; i < world.planets.length; i++) {
+    if (dist({x:x, y:y}, world.planets[i]) < size+ world.planets[i].size + 10) { // 10 extra padding
+      // retry finding a position
+      i = -1;
+      x = rndI(size,world.width-size);
+      y = rndI(size,world.height-size);
+
+      // grow the world with each failed try to place a planet, so that there will be more space
+      world.width++;
+      world.height++;
+      continue;
+    }
+  }
+
+  world.planets.push(new Planet(x,y, size, owner.id, ships));
+}
+function getPosition(size) {
+
+
 }
 
 function turn() {
@@ -154,6 +180,12 @@ function turn() {
       tt();return;
     }
   }
+  for (var i = 0; i < world.fleets.length; i++) { // even with a fleet, that player is still alive
+    if (world.fleets[i].owner != owner) {
+      tt();return;
+    }
+  }
+
   if (owner == 0) {tt();return; }// gaia cannot win
 var dt =  new Date();
   // player won
