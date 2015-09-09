@@ -13,6 +13,7 @@ var HEIGHT = 1000;
 io.on('connection', function(socket){
   var me;
   socket.on('join', function(data) {
+    if (me) {return;}
     var myid = currentId++;
     sockets[myid] = socket;
     var secret = Math.random().toString(36).substring(2);
@@ -27,6 +28,7 @@ io.on('connection', function(socket){
       // create my own planet
       createPlanet(me, 25, 100);
       socket.emit('player', me);
+      socket.emit('hof', hallOfFame);
       socket.emit('secret', {'secret': secret});
 
       update(socket); // send this player an initial game state
@@ -40,6 +42,7 @@ io.on('connection', function(socket){
           me = world.players[i];
           me.online = true;
           socket.emit('player', me);
+          socket.emit('hof', hallOfFame);
           update(socket);
           sockets[i] = socket;
 
@@ -82,16 +85,42 @@ var gaia = {
 }; // gaia player
 world.players.push(gaia);
 
+var hallOfFame = db("hof");
+if (typeof hallOfFame == "undefined") {
+  hallOfFame = [];
+}
+
+
+function resetMap() {
+  world = {
+    planets:[],
+    fleets:[],
+    players:[gaia]
+  }
+  currentId = 1;
+  WIDTH = HEIGHT = 1000;
+  secrets = ['gaia'];
+  for (key in sockets) {
+    if (sockets[key]) sockets[key].disconnect();
+  }
+  sockets = [];
+
+  init();
+}
+
+
 
 function init() {
-  for (var i = 0; i < 30; i++) {
+  for (var i = 0; i < 1; i++) {
     createPlanet(gaia, rndI(10,30), rndI(0, 20));
   }
+  // start the game loop
+  turn();
 }
 
 function createPlanet(owner, size, ships) {
   // TODO check that the planet does not collide with others
-  world.planets.push(new Planet(rndI(0,WIDTH),rndI(0,HEIGHT), size, owner.id, ships));
+  world.planets.push(new Planet(rndI(size,WIDTH-size),rndI(size,HEIGHT-size), size, owner.id, ships));
 }
 
 function turn() {
@@ -117,16 +146,39 @@ function turn() {
   }
 
 
+  // check for win condition
+  var owner = world.planets[0].owner;
+  if (owner == 0) {tt();return;} // gaia cannot win
+  for (var i = 0; i < world.planets.length; i++) {
+    if (world.planets[i].owner != owner) {
+      tt();return;
+    }
+  }
+  if (owner == 0) {tt();return; }// gaia cannot win
+var dt =  new Date();
+  // player won
+  hallOfFame.push({
+    date: dt.getDate() + "."+ (dt.getMonth()+1) +"."+(dt.getYear()-100),
+    user: world.players[owner].name,
+    players: world.players.length - 1
+  });
+  db("hof", hallOfFame);
+
+  sockets[owner].emit('won', {
+    players:  world.players.length -1
+  });
+  resetMap();
+}
+
+function tt() { // turn timeout
   setTimeout(turn, 3000);
 }
 
 function update(socket) { // update a socket
-  console.log("update");
   socket.emit('turn', world);
 }
 
 init();
-turn();
 
 
 
@@ -138,11 +190,14 @@ function Planet(x, y, size, owner, ships) {
   this.size = size;
   this.owner = owner;
   this.ships = ships;
+  this.limit = size*10; // production limit
 }
 function produceShips(planet){
   var prod = planet.size / 10;  // production per turn defined by size
   if (world.players[planet.owner].online) {prod*=2;} // faster production, when you're online
-  planet.ships += Math.floor(prod);
+  if (planet.ships <= planet.limit) { // the planet is still able to produce
+    planet.ships += Math.floor(prod);
+  }
 }
 
 function Fleet(from, to, ships, turns) {

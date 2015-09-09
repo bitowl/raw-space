@@ -17,11 +17,19 @@ function init() {
     // try to rejoin
     socket.emit("rejoin", {secret: localStorage.secret});
   } else {
-    socket.emit("join", {name: window.prompt("Enter your name:")});
+    var name = null;
+    while (name == null) {
+      name = window.prompt("Enter your name:");
+    }
+    socket.emit("join", {name: name});
   }
   socket.on("fail", function(data) {
     // probably the last game we were in has ended
-    socket.emit("join", {name: window.prompt("Enter your name:")});
+    var name = null;
+    while (name == null) {
+      name = window.prompt("Enter your name:");
+    }
+    socket.emit("join", {name: name});
   });
 
   socket.on('player', function(data) {
@@ -33,6 +41,9 @@ function init() {
   });
   socket.on('secret', function(data) {
     localStorage.secret = data.secret;// we can use the secret to login
+  });
+  socket.on('hof', function(data) {
+    hallOfFame = data;
   });
   socket.on('turn', function(data){
     world = data;
@@ -49,11 +60,15 @@ function init() {
       }
     }
 
-    alert ("YOU DIED!");
+    error = "you died";
+    localStorage.secret = null;
 
   });
+  socket.on('won', function(data) {
+    error = "You won a game with " + data.players+" players!";
+  });
   socket.on('disconnect', function() {
-    alert("SERVER DISCONNECTED");
+    if (error == null) error = "disconnected from server";
   });
 
 }
@@ -88,7 +103,12 @@ var translatedX = -70;
 var translatedY = -64;
 var currentScale = 1;
 
+var error = null;
 
+var hallOfFame = [];
+
+
+var info = null;
 
 function loop() {
   // Use the identity matrix while clearing the canvas
@@ -99,7 +119,7 @@ function loop() {
 
   // draw planets
   align("center");
-  font("14px sans-serif");
+  font(14);
   for (var i = 0; i < world.planets.length; i++) {
     drawPlanet(i);
   }
@@ -110,7 +130,12 @@ function loop() {
     drawFleet(world.fleets[i]);
   }
 
-
+  if (selectedStart != -1 && selectedEnd != -1) {
+    ctx.lineWidth = 3;
+    color (player.color);
+    line(world.planets[selectedStart].x ,world.planets[selectedStart].y, world.planets[selectedEnd].x ,world.planets[selectedEnd].y);
+    ctx.lineWidth = 1;
+  }
   // hud
   // ctx.setTransform(1, 0, 0, 1, 0, 0);
   drawHud();
@@ -123,48 +148,100 @@ window.onresize = function(event) {
   resize();
 };
 function resize() {
-  WIDTH = window.innerWidth - 10;
-  HEIGHT = window.innerHeight - 10;
+  WIDTH = window.innerWidth - 9;
+  HEIGHT = window.innerHeight - 9;
   console.log(WIDTH+","+HEIGHT);
   canvas.width = WIDTH;
   canvas.height = HEIGHT;
 }
 
-var lastX = -1, lastY; // for translating the map
-window.onmousedown = function(event) {
+window.oncontextmenu = function() {return false;}
+var lastX , lastY, mouseDown, scaling = false, scalingDist, changeAmount = false; // for translating the map
+window.ontouchstart= window.onmousedown = function(event) {
+
+  if (event.button == 2) {
+    event.preventDefault();
+    return false;
+  }
+  if (error != null) {
+    location.reload();
+    return;
+  }
+
   var pos = getRelativeCoords(event);
   // TODO check, that we are the owner
 
   lastX = pos.x;
   lastY = pos.y;
+
+  if (lastX < 50 && lastY > HEIGHT-50) {
+    changeAmount = true;
+    return;
+  }
+  if (lastX > WIDTH-50 && lastY > HEIGHT-50) {
+    // center on planet
+    focusPlanet(world.planets[0]);
+    return;
+  }
+
   selectedStart = getPlanet(pos);
   if (selectedStart!= -1 && world.planets[selectedStart].owner != player.id) {
     selectedStart = -1;
   }
   selectedTime = 0;
+  mouseDown = true;
+  if (event.touches && event.touches.length == 2) {
+    scaling = true;
+    scalingDist = Math.max(1,dist(event.touches[0].pageX - event.touches[1].pageX, event.touches[0].pageY -  event.touches[1].pageY));
 
+  } else {
+    scaling = false;
+  }
+    event.preventDefault();
 }
-window.onmousemove = function(event) {
+window.ontouchmove = window.onmousemove = function(event) {
+info = Date.now() + " "+scaling;
+  if (scaling) {
+    // zoom around the center between both fingers
+    lastX = (event.touches[0].pageX + event.touches[1].pageX)/2;
+    lastY = (event.touches[0].pageY + event.touches[1].pageY)/2;
 
-  var pos = getRelativeCoords(event);
-  if (selectedStart != -1) {
-    var plan = getPlanet(pos);
-    if (plan != selectedStart) {
-      selectedEnd = plan;
+    var dst =  Math.max(1,dist(event.touches[0].pageX - event.touches[1].pageX, event.touches[0].pageY - event.touches[1].pageY));
+    info = "scaleMove "+ scalingDist+","+dst+", "+(scalingDist/dst);
+
+    zoom(dst / scalingDist);
+    scalingDist = dst;
+  }else if (changeAmount) {
+    var pos = getRelativeCoords(event);
+    amount += (pos.x-lastX + pos.y - lastY) / 4;
+    amount = Math.floor(Math.max(1, Math.min(100, amount)));
+    lastX = pos.x;
+    lastY = pos.y;
+  } else {
+    var pos = getRelativeCoords(event);
+    if (selectedStart != -1) {
+      var plan = getPlanet(pos);
+      if (plan != selectedStart) {
+        selectedEnd = plan;
+      }
+    } else if(mouseDown){ // translate the map
+      console.log(pos.x - lastX);
+      ctx.translate(pos.x - lastX, pos.y - lastY);
+      translatedX -= pos.x - lastX;
+      translatedY -= pos.y - lastY;
     }
-  } else if(lastX != -1){ // translate the map
-    console.log(pos.x - lastX);
-    ctx.translate(pos.x - lastX, pos.y - lastY);
-    translatedX -= pos.x - lastX;
-    translatedY -= pos.y - lastY;
     lastX = pos.x;
     lastY = pos.y;
   }
+  event.preventDefault();
 }
-window.onmouseup = function(event) {
+
+
+var amount = 50; // percent of ships to send
+
+window.ontouchend = window.onmouseup = function(event) {
   if (selectedStart != -1 && selectedEnd != -1) {
 
-    var amount = 50;
     // send ships
     socket.emit('send', {
       'from': selectedStart,
@@ -181,14 +258,47 @@ window.onmouseup = function(event) {
   }
   selectedStart = -1;
   selectedEnd = -1;
-  lastX = -1;
+  mouseDown = false;
+  scaling = false;
+  changeAmount = false;
+
 }
 
 window.onmousewheel = function (e) {
-  	var delta = Math.max(-1, Math.min(1, (e.wheelDelta || -e.detail)))*.2 + 1;
-    console.log(delta);
-    currentScale /= delta;
-    ctx.scale(delta, delta);
+
+  var delta = Math.max(-1, Math.min(1, (e.wheelDelta || -e.detail)));
+  if (e.pageX < 50 && e.pageY > HEIGHT-50) {
+    // change amount
+    amount += delta * 2;
+    amount = Math.floor(Math.max(1, Math.min(100, amount)));
+  } else {
+    var zm = delta*.2 + 1;
+    // zoom
+    console.log(zm);
+    console.log(lastX);
+
+    zoom(zm);
+
+}
+}
+
+function zoom(delta) {
+  // zenter the zooming on the mouse cursor
+  translatedX = ((translatedX + lastX) * delta) - lastX;
+  translatedY = ((translatedY + lastY) * delta) - lastY;
+
+  // mouse coordinates changed
+//    window.onmousemove
+//  translatedX = ((translatedX + lastX) * delta) - lastX;
+
+
+  currentScale /= delta;
+}
+if (document.addEventListener) document.addEventListener("DOMMouseScroll", window.onmousewheel);
+
+function focusPlanet(planet) { // focus the canvas on this planet
+  translatedX = planet.x / currentScale - WIDTH/2;
+  translatedY = planet.y / currentScale - HEIGHT/2;
 }
 
 function getPlanet(pos) {
@@ -206,8 +316,12 @@ function getPlanet(pos) {
 }
 
 function getRelativeCoords(event) {
-    if (event.offsetX !== undefined && event.offsetY !== undefined) { return { x: event.offsetX, y: event.offsetY }; }
-    return { x: event.layerX, y: event.layerY };
+  // adds border
+    // if (event.offsetX !== undefined && event.offsetY !== undefined) { return { x: event.offsetX, y: event.offsetY }; }
+    if(event.touches !== undefined) {
+      return { x: event.touches[0].pageX - 5, y: event.touches[0].pageY -5 };
+    }
+    return { x: event.pageX -5, y: event.pageY -5};
 }
 
 function test() {
@@ -219,6 +333,7 @@ function drawPlanet(p) {
   var planet = world.planets[p];
   color(world.players[planet.owner].color);
   circleF(planet.x, planet.y, planet.size);
+
   if (p == selectedStart || p == selectedEnd) {
     selectedTime++;
     console.log(selectedTime);
@@ -256,7 +371,7 @@ function drawFleet(fleet) {
   ctx.lineTo(-7, 5);
   ctx.lineTo(-5,0);
   ctx.lineTo(-7, -5);
-
+  ctx.closePath();
   color(world.players[fleet.owner].color);
   ctx.fill();
   color("000000");
@@ -268,24 +383,66 @@ function drawFleet(fleet) {
 
 
 function drawHud() {
-  font("64px sans-serif");
+
+
+  font(64);
+  color("ffffff");
   align("left");
-  text("space reversed", 0, 0);
-  font("16px sans-serif");
+  text(info == null?"space reversed":info, 0, 0);
+  font(16);
   text("<--- menu",-30,-45);
 
 
   align("right");
   color("ffffff");
   text("online: ", 0, 20);
-  var onlinePlayers = 0;
+  var position = 40;
   for (var i = 0; i < world.players.length; i++) {
     if (world.players[i].online) {
       color(world.players[i].color);
-      text(world.players[i].name, 0 - 10, 18*onlinePlayers +40);
-      onlinePlayers++;
+      text(world.players[i].name, 0 - 10, position);
+      position+= 18;
     }
   }
+
+  position += 20;
+  color("d4af37");
+  font("bold 16");
+  text("Hall of Fame", 0, position);
+  position += 18;
+  font(16);
+
+  text("User    Date        Players", 0, position);
+  position += 20;
+  color("ffffff");
+  for (var i = hallOfFame.length-1; i >= 0; i--) {
+    text(hallOfFame[i].user, -160, position);
+    text(hallOfFame[i].date, -60, position);
+    text(hallOfFame[i].players, 0, position);
+    position += 18;
+  }
+
+
+  ctx.setTransform(1, 0, 0, 1, 0, 0); // stuff that stays at the same place of the screen
+
+  align("center");
+
+  color(player.color);
+  rectF(0, HEIGHT - 50, 50, 50);
+  rectF(WIDTH - 50, HEIGHT - 50, 50, 50);
+
+  color("000000");
+  text(amount + "%", 25, HEIGHT-20);
+
+  if (error != null) {
+    color("ff0000");
+    font("32px sans-serif");
+    text(error, WIDTH/2,HEIGHT/2 - 40);
+    color("ffffff");
+    font("24px sans-serif");
+    text("touch to restart", WIDTH/2, HEIGHT/2);
+  }
+
 }
 
 // canvas functions
@@ -293,11 +450,19 @@ function color(c) {
   ctx.fillStyle="#" + c;
   ctx.strokeStyle="#" + c;
 }
+function line (ax, ay, bx, by) {
+  ctx.beginPath();
+  ctx.moveTo(ax, ay);
+  ctx.lineTo(bx, by);
+  ctx.stroke();
+}
 function rect(x, y, w, h) {
+  ctx.beginPath();
   ctx.rect(x, y, w, h);
   ctx.stroke();
 }
 function rectF(x, y, w, h) {
+  ctx.beginPath();
   ctx.rect(x, y, w, h);
   ctx.fill();
 }
@@ -312,7 +477,7 @@ function circleF(x, y, r) {
   ctx.fill();
 }
 function font(f) {
-  ctx.font = f;
+  ctx.font = f+"px sans-serif";
 }
 function text(t, x, y) {
   ctx.fillText(t, x, y);
@@ -333,4 +498,7 @@ function rndI(min, max) {
 }
 function inter(a ,b, v) { // interpolate v=1 -> b v=0 -> a
   return v * b + (1-v) *a;
+}
+function dist(x, y) {
+  return Math.sqrt(x*x + y*y);
 }
