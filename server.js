@@ -191,7 +191,7 @@ function turn() {
     world.fleets[i].turn();
   }
   for (var i = 0; i < world.fleets.length; i++) {
-      if (world.fleets[i].delete) {
+      if (world.fleets[i].todelete) {
         world.fleets.splice(i,1);
         i--;
       }
@@ -285,7 +285,7 @@ Fleet.prototype.turn = function() {
     this.turns --;
   }
   if (this.turns <= 0) {
-    this.delete = true;
+    this.todelete = true;
 
     if (world.planets[this.to].owner == this.owner) {
       world.arrived.push({

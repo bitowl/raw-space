@@ -657,8 +657,6 @@ function drawHud() {
   color(WHITE);
   text("particles: ", -30, -10);
 
-  text
-
   if (translatedX < 0) { // online users and hall of fame
     text("online: ", 0, 20);
     var position = 40;
