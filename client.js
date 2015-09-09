@@ -10,6 +10,8 @@ var WHITE = "ffffff";
 var socket = {}
 
 var particles =[];
+var starfield = []; // particles belonging to the star field to render them in background
+var dustfields = []; // blury bg background circles
 
 function init() {
   if (!socket.connected) socket = io(document.location.href);
@@ -49,45 +51,61 @@ function init() {
       return a.players - b.players;
     });
   });
+  socket.on('dustfields', function(data) {
+    dustfields = data;
+  });
+  socket.on('starfield', function(data) {
+    starfield = data;
+  });
   socket.on('turn', function(data){
+    if (world.players.length == 0) {
+    // we have not recieved a world before
 
-    // add particles for every crashing fleet
-    for (var i = 0; i < world.fleets.length; i++) {
-      var fleet = world.fleets[i];
-      if (fleet.turns == 1 && fleet.owner != world.planets[fleet.to].owner) {
-
-
-
-        // this would crash this frame
-        var from = world.planets[fleet.from];
-        var to = world.planets[fleet.to];
-
-        var ang = Math.atan2(from.y-to.y, from.x-to.x);
-        var x= Math.cos(ang)*(from.size+5) + to.x; // 5: radius of the fleet
-        var y= Math.sin(ang)*(from.size+5) + to.y;
-
-        for (var j = 0; j < 80; j++) {
-          SPEED = .1
-          particles.push(new Particle(x, y, rndI(200,300), {r:rndI(128,255),g:rndI(0,128),b:0,a:1},{r:255,g:255,b:0,a:0}, rnd(1,2), 0, rnd(-SPEED,SPEED), rnd(-SPEED,SPEED)));
-        }
-
-        if (fleet.ships > to.ships) {
-          // we will capture this planet
-          for (var i = 0; i < Math.PI*2; i+=Math.PI/8) {
-            particles.push(new Particle(to.x+Math.cos(i)*to.size, to.y+Math.sin(i)*to.size, 500, world.players[fleet.owner].color,null,2, 0, Math.cos(i)*.1, Math.sin(i)*.1));
-          }
-        }
-
+      // delete old star field
+    /*for (var i = 0; i < particles.length; i++) {
+      if (particles[i].star) {
+        particles.splice(i,1);
+        i--;
       }
+    }*/
+
+
     }
+
 
     world = data;
     lastTurn = Date.now();
 
+    // add particles for every crashing fleet
+    if (particles) {
+      for (var i = 0; i < world.arrived.length; i++) {
 
+        var fleet = world.arrived[i];
+        if (fleet.fight) {
+          var from = world.planets[fleet.from];
+          var to = world.planets[fleet.to];
 
-      console.log("recieved world");
-      console.log(world);
+          var ang = Math.atan2(from.y-to.y, from.x-to.x);
+          var x= Math.cos(ang)*(from.size+5) + to.x; // 5: radius of the fleet
+          var y= Math.sin(ang)*(from.size+5) + to.y;
+
+          for (var j = 0; j < 80; j++) {
+            SPEED = .1
+            particles.push(new Particle(x, y, rndI(200,300), {r:rndI(128,255),g:rndI(0,128),b:0,a:1},{r:255,g:255,b:0,a:0}, rnd(1,2), 0, rnd(-SPEED,SPEED), rnd(-SPEED,SPEED)));
+          }
+
+          if (fleet.victory) {
+            // we will capture this planet
+            for (var i = 0; i < Math.PI*2; i+=Math.PI/8) {
+              particles.push(new Particle(to.x+Math.cos(i)*to.size, to.y+Math.sin(i)*to.size, 500, world.players[fleet.owner].color,null,2, 0, Math.cos(i)*.1, Math.sin(i)*.1));
+            }
+          }
+        }
+      }
+    }
+
+    console.log("recieved world");
+    console.log(world);
     // check that we are still alive
     for (var i = 0; i < world.planets.length; i++) {
       if(world.planets[i].owner == player.id) {
@@ -136,6 +154,14 @@ var canvas = document.createElement('canvas');
 var ctx = canvas.getContext('2d');
 document.body.appendChild(canvas);
 
+var imageData = ctx.createImageData(1,1); // only do this once per page
+var onepx  = imageData.data;                        // only do this once per page
+onepx[0]   = 255;
+onepx[1]   = 255;
+onepx[2]   = 255;
+onepx[3]   = 255;
+
+
 resize();
 
 // move the map
@@ -153,7 +179,13 @@ var info = null;
 
 var leftBound = -750;
 var topBound = -64;
-var lastTime = Date.now();;
+var lastTime = Date.now();
+
+if (typeof localStorage.showParticles == "undefined") {
+  localStorage.showParticles = true;
+}
+
+var nextFrameTime = 0, framesDone;
 
 function loop() {
   // Use the identity matrix while clearing the canvas
@@ -179,6 +211,29 @@ function loop() {
 
 
 
+  if (localStorage.showParticles == 1) {
+      //ctx.globalCompositeOperation = "multiply";
+  // draw dust and star field
+  for (var i = 0; i < dustfields.length; i++) {
+    var dust = dustfields[i];
+    var radgrad = ctx.createRadialGradient(dust.x, dust.y,0,dust.x,dust.y, dust.size);
+    radgrad.addColorStop(0, 'rgba('+dust.color.r+','+dust.color.g+','+dust.color.b+',.2)');
+    radgrad.addColorStop(dust.midpoint, 'rgba('+dust.color.r+','+dust.color.g+','+dust.color.b+',.1)');
+    radgrad.addColorStop(1, 'rgba('+dust.color.r+','+dust.color.g+','+dust.color.b+',0)');
+
+    ctx.fillStyle = radgrad;
+    ctx.fillRect(dust.x-dust.size,dust.y-dust.size,dust.size*2,dust.size*2);
+  }
+//ctx.globalCompositeOperation = "screen";
+    for (var i = 0; i < starfield.length; i++) {
+      var star = starfield[i];
+      ctx.fillStyle = "rgba("+star.color.r+","+star.color.g+","+star.color.b+","+star.color.a+")";
+      circleF(star.x, star.y, star.size);
+    }
+
+  //ctx.globalCompositeOperation = "source-over";
+
+  }
   // draw planets
   align("center");
   font(14);
@@ -192,35 +247,40 @@ function loop() {
     drawFleet(world.fleets[i]);
   }
 
+  if (localStorage.showParticles == 1) {
+    ctx.globalCompositeOperation = "screen"; // additive blending
 
+    var time = Date.now();
+    var delta = time-lastTime;
 
-  console.log("particles: "+particles.length);
-  var time = Date.now();
-  var delta = time-lastTime;
-  for (var i = 0; i < particles.length; i++) {
-    var particle = particles[i];
-    particle.ttl -= delta;
-    if (particle.ttl <= 0) {
-      particles.splice(i,1);
-      i--;
-      continue;
+    framesDone++;
+    if (nextFrameTime < time) {
+      nextFrameTime = time + 1000;
+      console.info("fps: "+framesDone);
+      framesDone = 0;
     }
-    var v = 1-(particle.ttl/particle.time); // interpolation value
-    particle.x += particle.speedX * delta;
-    particle.y += particle.speedY * delta;
-    console.log(particle.startColor.a);
+    for (var i = 0; i < particles.length; i++) {
+      var particle = particles[i];
 
-    if (particle.endColor == null) {
-        color(particle.startColor);
-    } else {
-      ctx.fillStyle = "rgba("+Math.floor(inter(particle.startColor.r, particle.endColor.r,v))+","+Math.floor(inter(particle.startColor.g, particle.endColor.g,v))+","+Math.floor(inter(particle.startColor.b, particle.endColor.b,v))+","+inter(particle.startColor.a, particle.endColor.a,v)+")";
-      console.log("rgba("+Math.floor(inter(particle.startColor.r, particle.endColor.r,v))+","+Math.floor(inter(particle.startColor.g, particle.endColor.g,v))+","+Math.floor(inter(particle.startColor.b, particle.endColor.b,v))+","+inter(particle.startColor.a, particle.endColor.a,v)+")");
+      particle.ttl -= delta;
+      if (particle.ttl <= 0) {
+        particles.splice(i,1);
+        i--;
+        continue;
+      }
+
+      particle.x += particle.speedX * delta;
+      particle.y += particle.speedY * delta;
+
+
+      drawParticle(particle);
+
+
     }
-    circleF(particle.x, particle.y, inter(particle.startSize, particle.endSize, v));
+    lastTime = time;
+
+    ctx.globalCompositeOperation = "source-over";
   }
-  lastTime = time;
-
-
 
   if (selectedStart != -1 && selectedEnd != -1) {
     ctx.lineWidth = 3;
@@ -236,6 +296,19 @@ function loop() {
   requestAnimationFrame(loop);
 }
 
+
+function drawParticle(particle) {
+
+
+          var v = 1-(particle.ttl/particle.time);
+
+        if (particle.endColor == null) {
+          color(particle.startColor);
+        } else {
+          ctx.fillStyle = "rgba("+Math.floor(inter(particle.startColor.r, particle.endColor.r,v))+","+Math.floor(inter(particle.startColor.g, particle.endColor.g,v))+","+Math.floor(inter(particle.startColor.b, particle.endColor.b,v))+","+inter(particle.startColor.a, particle.endColor.a,v)+")";
+        }
+        circleF(particle.x, particle.y, inter(particle.startSize, particle.endSize, v));
+}
 window.onresize = function(event) {
   resize();
 };
@@ -246,6 +319,8 @@ function resize() {
   canvas.width = WIDTH;
   canvas.height = HEIGHT;
   zoom(1);
+
+
 }
 
 window.oncontextmenu = function() {return false;}
@@ -280,6 +355,18 @@ window.ontouchstart= window.onmousedown = function(event) {
     // go to menu
     translatedX = -70;
     translatedY = -64;
+    return;
+  }
+  var rx = (lastX +translatedX)*currentScale;
+  var ry = (lastY +translatedY)*currentScale;
+  if (rx < 0  && rx > -120 && ry <0 && ry > -30) {
+    if (localStorage.showParticles == 1) {
+      localStorage.showParticles = 0;
+    } else {
+      localStorage.showParticles = 1;
+    }
+    console.log(localStorage.showParticles);
+    return;
   }
 
   selectedStart = getPlanet(pos);
@@ -295,7 +382,7 @@ window.ontouchstart= window.onmousedown = function(event) {
   } else {
     scaling = false;
   }
-    event.preventDefault();
+  event.preventDefault();
 }
 window.ontouchmove = window.onmousemove = function(event) {
   if (scaling) {
@@ -321,7 +408,6 @@ window.ontouchmove = window.onmousemove = function(event) {
         selectedEnd = plan;
       }
     } else if(mouseDown){ // translate the map
-      console.log(pos.x - lastX);
       ctx.translate(pos.x - lastX, pos.y - lastY);
       translatedX -= pos.x - lastX;
       translatedY -= pos.y - lastY;
@@ -359,7 +445,7 @@ window.ontouchend = window.onmouseup = function(event) {
   mouseDown = false;
   scaling = false;
   changeAmount = false;
-
+  event.preventDefault();
 }
 
 window.onmousewheel = function (e) {
@@ -372,12 +458,10 @@ window.onmousewheel = function (e) {
   } else {
     var zm = delta*.2 + 1;
     // zoom
-    console.log(zm);
-    console.log(lastX);
 
     zoom(zm);
 
-}
+  }
 }
 
 function zoom(delta) {
@@ -404,8 +488,8 @@ function zoom(delta) {
   translatedY = ((translatedY + lastY) * delta) - lastY;
 
   // mouse coordinates changed
-//    window.onmousemove
-//  translatedX = ((translatedX + lastX) * delta) - lastX;
+  //    window.onmousemove
+  //  translatedX = ((translatedX + lastX) * delta) - lastX;
 
 
 }
@@ -439,7 +523,6 @@ function getPlanet(pos) {
   pos.x += translatedX; pos.y+=translatedY;
   pos.x *= currentScale; pos.y*=currentScale;
 
-  console.log(pos.x+","+pos.y);
 
   for (var i = 0; i < world.planets.length; i++) {
     if ((world.planets[i].x - pos.x)*(world.planets[i].x - pos.x) + (world.planets[i].y - pos.y)*(world.planets[i].y - pos.y) < world.planets[i].size*world.planets[i].size) {
@@ -451,11 +534,11 @@ function getPlanet(pos) {
 
 function getRelativeCoords(event) {
   // adds border
-    // if (event.offsetX !== undefined && event.offsetY !== undefined) { return { x: event.offsetX, y: event.offsetY }; }
-    if(event.touches !== undefined) {
-      return { x: event.touches[0].pageX - 5, y: event.touches[0].pageY -5 };
-    }
-    return { x: event.pageX -5, y: event.pageY -5};
+  // if (event.offsetX !== undefined && event.offsetY !== undefined) { return { x: event.offsetX, y: event.offsetY }; }
+  if(event.touches !== undefined) {
+    return { x: event.touches[0].pageX - 5, y: event.touches[0].pageY -5 };
+  }
+  return { x: event.pageX -5, y: event.pageY -5};
 }
 
 function test() {
@@ -470,7 +553,9 @@ function drawPlanet(p) {
 
   if (p == selectedStart || p == selectedEnd) {
     selectedTime++;
-    console.log(selectedTime);
+    if (p == selectedEnd && planet.owner != player.id) {
+      color("ff0000"); // signal attack
+    }
 
     circle(planet.x, planet.y, (planet.size+Math.abs(Math.sin(selectedTime/10))*5)+2);
   }
@@ -494,7 +579,7 @@ function drawFleet(fleet) {
       console.error(fleet.turns);
     }
 
-      // add size of the planet
+    // add size of the planet
     var fromC = addSpace(from, to);
     var toC = addSpace(to, from);
 
@@ -502,13 +587,16 @@ function drawFleet(fleet) {
     y = inter(toC.y, fromC.y, (fleet.turns-nextTurnDelta)/fleet.way);
 
 
+    if(localStorage.showParticles == 1) {
+      // add particles
 
-        // add particles
-
-        var ang = Math.atan2(from.y-to.y, from.x-to.x);
+      var ang = Math.atan2(from.y-to.y, from.x-to.x);
+      for (var i = 0; i < 5; i++) {
         var angle = rnd(ang-.5,ang+.5);
-        particles.push(new Particle(x + Math.cos(ang)*5,y+Math.sin(ang)*5,rndI(500,1000),{r:rndI(200,255),g:rndI(0,90),b:0,a:1},{r:255,g:255,b:0,a:0},1, 0, Math.cos(angle)/20, Math.sin(angle)/20, 0.2));
-
+        var speed = rnd(0.03,0.05);
+        particles.push(new Particle(x + Math.cos(ang)*5,y+Math.sin(ang)*5,rndI(500,1000),{r:rndI(200,255),g:rndI(0,90),b:0,a:1},{r:255,g:255,b:0,a:0},1, 0, Math.cos(angle)*speed, Math.sin(angle)*speed));
+      }
+    }
   }
 
 
@@ -534,8 +622,8 @@ function drawFleet(fleet) {
 function addSpace(from, to) {
   var ang = Math.atan2(to.y-from.y, to.x-from.x);
   return {x: Math.cos(ang)*(from.size+5) + from.x, // 5: radius of the fleet
-  y: Math.sin(ang)*(from.size+5) + from.y
-};
+    y: Math.sin(ang)*(from.size+5) + from.y
+  };
 }
 
 var exp = ["instructions:",
@@ -555,11 +643,22 @@ function drawHud() {
   font(64);
   color(WHITE);
   align("left");
-  text(info == null?"space reversed":info, 0, 0);
+  text(info == null?"space reversed":info, 30, 0);
 
   font(16);
   align("right");
+  if (localStorage.showParticles == 1) {
+    color("00cc00");
+    text("on",-10, -10);
+  } else {
+    color("cc0000");
+    text("off", -10, -10);
+  }
   color(WHITE);
+  text("particles: ", -30, -10);
+
+  text
+
   if (translatedX < 0) { // online users and hall of fame
     text("online: ", 0, 20);
     var position = 40;
@@ -611,6 +710,7 @@ function drawHud() {
 
   color("000000");
   text(amount + "%", 25, HEIGHT-20);
+  text(">", WIDTH-25, HEIGHT-20);
 
   if (error != null) {
     color("ff0000");
@@ -688,7 +788,7 @@ function rndI(min, max) {
   return min + Math.floor(Math.random() * (max - min + 1));
 }
 function rnd(min, max) {
-    return min +Math.random() * (max - min);
+  return min +Math.random() * (max - min);
 }
 function inter(a ,b, v) { // interpolate v=1 -> b v=0 -> a
   return v * b + (1-v) *a;

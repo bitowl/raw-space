@@ -31,6 +31,8 @@ io.on('connection', function(socket){
       createPlanet(me, 25, 100);
       socket.emit('player', me);
       socket.emit('hof', hallOfFame);
+      socket.emit('dustfields', dustfields);
+      socket.emit('starfield', starfield);
       socket.emit('secret', {'secret': secret});
 
       update(socket); // send this player an initial game state
@@ -45,6 +47,8 @@ io.on('connection', function(socket){
           me.online = true;
           socket.emit('player', me);
           socket.emit('hof', hallOfFame);
+          socket.emit('dustfields', dustfields);
+          socket.emit('starfield', starfield);
           update(socket);
           sockets[i] = socket;
 
@@ -76,6 +80,7 @@ var world = {
   planets:[],
   fleets:[],
   players:[],
+  arrived:[], // ships that arrived in this turn
   width: INITIAL_WIDTH,
   height: INITIAL_HEIGHT
 }
@@ -93,6 +98,11 @@ var hallOfFame = db("hof");
 if (typeof hallOfFame == "undefined") {
   hallOfFame = [];
 }
+// background stuff
+var dustfields = [];
+var starfield = [];
+
+
 
 
 function resetMap() {
@@ -110,6 +120,9 @@ function resetMap() {
   }
   sockets = [];
 
+  dustfields =[];
+  starfield = [];
+
   init();
 }
 
@@ -119,6 +132,28 @@ function init() {
   for (var i = 0; i < 30; i++) {
     createPlanet(gaia, rndI(10,30), rndI(0, 20));
   }
+
+  for (var i = 0; i < 5; i++) {
+    dustfields.push( {
+      x: rndI(0,world.width),
+      y: rndI(0,world.height),
+      color: randomColorRGB(100,0.1),
+      size: rndI(300, 400),
+      midpoint: rnd(0.2,0.5)
+    });
+  }
+  for (var i = 0; i < 500; i++) {
+    var part = {
+      x: rndI(0,world.width),
+      y: rndI(0,world.height),
+      color: {r:rndI(230,255),
+        g:rndI(250,255),b:rndI(120,255),a:rndI(2,10)/10},
+     size:Math.floor(rnd(0.2,1)*100)/100};
+  //  part.star = true;
+    starfield.push(part);
+  }
+
+
   // start the game loop
   turn();
 }
@@ -150,6 +185,7 @@ function getPosition(size) {
 }
 
 function turn() {
+  world.arrived = []; // don't show the ones from last turn again
 
   for (var i = 0; i < world.fleets.length; i++) {
     world.fleets[i].turn();
@@ -252,6 +288,12 @@ Fleet.prototype.turn = function() {
     this.delete = true;
 
     if (world.planets[this.to].owner == this.owner) {
+      world.arrived.push({
+        from: this.from,
+        to: this.to,
+        owner: this.owner,
+        fight: false
+      });
       console.log("shipment");
       // friendly shipment
       world.planets[this.to].ships += this.ships;
@@ -263,6 +305,21 @@ Fleet.prototype.turn = function() {
         // successfull attack
         world.planets[this.to].ships *= -1; // the rest of the ships stays on the planet
         world.planets[this.to].owner = this.owner;
+        world.arrived.push({
+          from: this.from,
+          to: this.to,
+          owner: this.owner,
+          fight: true,
+          victory: true
+        });
+      } else {
+        world.arrived.push({
+          from: this.from,
+          to: this.to,
+          owner: this.owner,
+          fight: true,
+          victory: false
+        });
       }
     }
   }
@@ -283,4 +340,22 @@ function randomColor(brightness){
     return (s.length==1) ? '0'+s : s;
   }
   return randomChannel(brightness) + randomChannel(brightness) + randomChannel(brightness);
+}
+function randomColorRGB(brightness, alpha){
+  function randomChannel(brightness){
+    var r = 255-brightness;
+    var n = 0|((Math.random() * r) + brightness);
+    return n;
+  //  var s = n.toString(16);
+    //return (s.length==1) ? '0'+s : s;
+  }
+  return {
+  r:randomChannel(brightness),
+      g:randomChannel(brightness),
+    b: randomChannel(brightness),
+    a:alpha
+  };
+}
+function rnd(min, max) {
+  return min +Math.random() * (max - min);
 }
