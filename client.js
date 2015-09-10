@@ -31,7 +31,7 @@ function init() {
     var name = null;
     while (name == null) {
 
-      name = window.prompt("Enter your name:\n"+data.message);
+      name = window.prompt("Enter your name:  "+data.message);
     }
     socket.emit("join", {name: name});
   });
@@ -39,6 +39,12 @@ function init() {
   socket.on('player', function(data) {
     player = data;
     document.body.style.border = "5px solid #"+player.color;
+
+
+
+    document.body.innerHTML="";
+    document.body.appendChild(cnvs);
+
     // we can start the game now
     loop();
   });
@@ -149,24 +155,15 @@ var WIDTH = window.innerWidth;
 var HEIGHT = window.innerHeight;
 
 
-var canvas = document.createElement('canvas');
+var cnvs = document.createElement('canvas');
 
-var ctx = canvas.getContext('2d');
-document.body.appendChild(canvas);
-
-var imageData = ctx.createImageData(1,1); // only do this once per page
-var onepx  = imageData.data;                        // only do this once per page
-onepx[0]   = 255;
-onepx[1]   = 255;
-onepx[2]   = 255;
-onepx[3]   = 255;
-
+var ctx = cnvs.getContext('2d');
 
 resize();
 
 // move the map
-var translatedX = localStorage.hadIntroduction?-10:-710;
-localStorage.hadIntroduction = true;
+var translatedX = (localStorage.hadIntroduction===1)?-10:-710;
+localStorage.hadIntroduction = 1;
 var translatedY = -64;
 var currentScale = 1;
 
@@ -180,9 +177,11 @@ var info = null;
 var leftBound = -750;
 var topBound = -64;
 var lastTime = Date.now();
+console.log("show particles:"+localStorage.showParticles);
 
-if (typeof localStorage.showParticles == "undefined") {
-  localStorage.showParticles = true;
+
+if (typeof localStorage.showParticles === "undefined") {
+  localStorage.showParticles = 1;
 }
 
 var nextFrameTime = 0, framesDone;
@@ -190,7 +189,7 @@ var nextFrameTime = 0, framesDone;
 function loop() {
   // Use the identity matrix while clearing the canvas
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, cnvs.width, cnvs.height);
 
 
   // keep in game bounds
@@ -285,7 +284,7 @@ function loop() {
   if (selectedStart != -1 && selectedEnd != -1) {
     ctx.lineWidth = 3;
     color (player.color);
-    line(world.planets[selectedStart].x ,world.planets[selectedStart].y, world.planets[selectedEnd].x ,world.planets[selectedEnd].y);
+    lineS(world.planets[selectedStart].x ,world.planets[selectedStart].y, world.planets[selectedEnd].x ,world.planets[selectedEnd].y);
     ctx.lineWidth = 1;
   }
   // hud
@@ -316,8 +315,8 @@ function resize() {
   WIDTH = window.innerWidth - 9;
   HEIGHT = window.innerHeight - 9;
   console.log(WIDTH+","+HEIGHT);
-  canvas.width = WIDTH;
-  canvas.height = HEIGHT;
+  cnvs.width = WIDTH;
+  cnvs.height = HEIGHT;
   zoom(1);
 
 
@@ -326,7 +325,7 @@ function resize() {
 window.oncontextmenu = function() {return false;}
 var lastX , lastY, mouseDown, scaling = false, scalingDist, changeAmount = false; // for translating the map
 window.ontouchstart= window.onmousedown = function(event) {
-
+  console.log("touch start");
   if (event.button == 2) {
     event.preventDefault();
     return false;
@@ -337,7 +336,7 @@ window.ontouchstart= window.onmousedown = function(event) {
   }
 
   var pos = getRelativeCoords(event);
-  // TODO check, that we are the owner
+  console.log(pos.x+" -- "+pos.y);
 
   lastX = pos.x;
   lastY = pos.y;
@@ -385,7 +384,9 @@ window.ontouchstart= window.onmousedown = function(event) {
   event.preventDefault();
 }
 window.ontouchmove = window.onmousemove = function(event) {
+  console.log("move");
   if (scaling) {
+    console.log("saling");
     // zoom around the center between both fingers
     lastX = (event.touches[0].pageX + event.touches[1].pageX)/2;
     lastY = (event.touches[0].pageY + event.touches[1].pageY)/2;
@@ -395,12 +396,14 @@ window.ontouchmove = window.onmousemove = function(event) {
     zoom(dst / scalingDist);
     scalingDist = dst;
   }else if (changeAmount) {
+    console.log("change amount");
     var pos = getRelativeCoords(event);
     amount += (pos.x-lastX + pos.y - lastY) / 4;
     amount = Math.floor(Math.max(1, Math.min(100, amount)));
     lastX = pos.x;
     lastY = pos.y;
   } else {
+    console.log("woot "+mouseDown);
     var pos = getRelativeCoords(event);
     if (selectedStart != -1) {
       var plan = getPlanet(pos);
@@ -557,7 +560,7 @@ function drawPlanet(p) {
       color("ff0000"); // signal attack
     }
 
-    circle(planet.x, planet.y, (planet.size+Math.abs(Math.sin(selectedTime/10))*5)+2);
+    circleS(planet.x, planet.y, (planet.size+Math.abs(Math.sin(selectedTime/10))*5)+2);
   }
   color(WHITE);
   text(planet.ships , planet.x, planet.y + planet.size + 12);
@@ -726,23 +729,19 @@ function color(c) {
   ctx.fillStyle="#" + c;
   ctx.strokeStyle="#" + c;
 }
-function line (ax, ay, bx, by) {
+function lineS(ax, ay, bx, by) {
   ctx.beginPath();
   ctx.moveTo(ax, ay);
   ctx.lineTo(bx, by);
   ctx.stroke();
 }
-function rect(x, y, w, h) {
-  ctx.beginPath();
-  ctx.rect(x, y, w, h);
-  ctx.stroke();
-}
+
 function rectF(x, y, w, h) {
   ctx.beginPath();
   ctx.rect(x, y, w, h);
   ctx.fill();
 }
-function circle(x, y, r) {
+function circleS(x, y, r) {
   ctx.beginPath();
   ctx.arc(x, y, r, 0,2*Math.PI);
   ctx.stroke();
