@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # replace symbols
-client="$(cat client.js)"
+client="$(cat jsfxr.js;cat player-small.js;cat sounds.js;cat song.js;cat client.js)"
 server="$(cat server.js)"
 
 export IFS=$'\n'
@@ -22,6 +22,8 @@ java -jar ~/tmp/compiler.jar --js min_client.js --js_output_file min/client.js
 
 echo -e "$server" > min_server.js
 java -jar ~/tmp/compiler.jar --js min_server.js --js_output_file min/server.js
+
+# exit
 
 rm js13k.zip
 cd min

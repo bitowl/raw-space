@@ -13,8 +13,99 @@ var particles =[];
 var starfield = []; // particles belonging to the star field to render them in background
 var dustfields = []; // blury bg background circles
 
+var world = {
+  planets:[],
+  fleets:[],
+  players:[],
+  wwidth: 1,
+  wheight: 1
+};
+
+
+var selectedStart = -1;
+var selectedEnd = -1;
+var selectedTime = 0; // to create sin effect
+
+var WIDTH = window.innerWidth;
+var HEIGHT = window.innerHeight;
+
+
+var cnvs = document.createElement("canvas");
+
+var ctx = cnvs.getContext("2d");
+
+
+console.log("INTRO: "+localStorage.hadIntroduction);
+// move the map
+var translatedX = (localStorage.hadIntroduction==1)?-10:-710;
+localStorage.hadIntroduction = 1;
+var translatedY = -64;
+var currentScale = 1;
+
+var error = null;
+
+var hallOfFame = [];
+
+
+var info = null;
+
+var leftBound = -750;
+var topBound = -70;
+var lastTime = Date.now();
+
+
+var nextFrameTime = 0, framesDone;
+var amount = 50; // percent of ships to send
+var focused = -1;
+
+
+
+var mp, backgroundMusic = null, loadingStart;
+
+function loadSong() {
+  info = "loading music...";
+  setTimeout(function() {
+
+    loadingStart = Date.now();
+      // load music
+      mp = new CPlayer();
+      mp.init(song);
+      genSound();
+  },500); // give time to display message
+}
+// load music
+function genSound() {
+  var progress =mp.generate();
+  console.log("progress: "+progress+" "+Date.now());
+    if (progress <1) {
+      if (Date.now()-loadingStart > progress * 20000) {
+        // too slow
+        info = "device is too slow to synthesize music";
+        setTimeout(function() {info=null;}, 5000);
+        localStorage.musicOn = 0;
+      } else {
+        genSound();
+      }
+    } else {
+
+      info = null;
+
+      // Put the generated song in an Audio element.
+      var wave = mp.createWave();
+      backgroundMusic = document.createElement("audio");
+      backgroundMusic.src = URL.createObjectURL(new Blob([wave], {type: "audio/wav"}));
+      backgroundMusic.loop = true;
+      if (localStorage.musicOn == 1) {
+        backgroundMusic.play();
+      }
+
+    }
+}
+// end music
+
 function init() {
   if (!socket.connected) socket = io(document.location.href);
+
 
   if (localStorage.secret) {
     // try to rejoin
@@ -22,7 +113,7 @@ function init() {
   } else {
     var name = null;
     while (name == null) {
-      name = window.prompt("Enter your name:");
+      name = window.prompt("Enter your n'ame:");
     }
     socket.emit("join", {name: name});
   }
@@ -31,50 +122,40 @@ function init() {
     var name = null;
     while (name == null) {
 
-      name = window.prompt("Enter your name:  "+data.message);
+      name = window.prompt("Enter your n'ame:  "+data.message);
     }
     socket.emit("join", {name: name});
   });
 
-  socket.on('player', function(data) {
+  socket.on("player", function(data) {
     player = data;
     document.body.style.border = "5px solid #"+player.color;
 
-
-
-    document.body.innerHTML="";
-    document.body.appendChild(cnvs);
-
-    // we can start the game now
-    loop();
+    // start music if wished
+    if (localStorage.musicOn == 1) {
+      setTimeout(loadSong,100);
+    }
   });
-  socket.on('secret', function(data) {
+  socket.on("secret", function(data) {
     localStorage.secret = data.secret;// we can use the secret to login
   });
-  socket.on('hof', function(data) {
+  socket.on("hof", function(data) {
     hallOfFame = data;
     hallOfFame.sort(function(a,b) {
       return a.players - b.players;
     });
   });
-  socket.on('dustfields', function(data) {
+  socket.on("dustfields", function(data) {
     dustfields = data;
   });
-  socket.on('starfield', function(data) {
+  socket.on("starfield", function(data) {
     starfield = data;
   });
-  socket.on('turn', function(data){
+  socket.on("turn", function(data){
+    var start = false;
     if (world.players.length == 0) {
-    // we have not recieved a world before
-
-      // delete old star field
-    /*for (var i = 0; i < particles.length; i++) {
-      if (particles[i].star) {
-        particles.splice(i,1);
-        i--;
-      }
-    }*/
-
+      // we have not recieved a world before
+      start = true;
 
     }
 
@@ -101,13 +182,28 @@ function init() {
           }
 
           if (fleet.victory) {
-            // we will capture this planet
+            // this planet got captured
             for (var i = 0; i < Math.PI*2; i+=Math.PI/8) {
               particles.push(new Particle(to.x+Math.cos(i)*to.size, to.y+Math.sin(i)*to.size, 500, world.players[fleet.owner].color,null,2, 0, Math.cos(i)*.1, Math.sin(i)*.1));
             }
+            playSnd(3);
+          } else {
+            // explosion
+            playSnd(0);
           }
         }
       }
+    }
+
+
+    if (start) {
+      document.body.innerHTML="";
+      document.body.appendChild(cnvs);
+
+
+      rescale();
+      // we can start the game now
+      loop();
     }
 
     console.log("recieved world");
@@ -128,76 +224,42 @@ function init() {
     localStorage.secret = null;
 
   });
-  socket.on('won', function(data) {
-    error = "You won a game with " + data.players+" players!";
+  socket.on("won", function(data) {
+    error = "You w'on a game with " + data.players+" pla'yers!";
   });
-  socket.on('disconnect', function() {
-    if (error == null) error = "disconnected from server";
+  socket.on("disconnect", function() {
+    if (error == null) error = "disconnected fr'om server";
   });
+
 
 }
 
-init();
-
-
-var world = {
-  planets:[],
-  fleets:[],
-  players:[]
-};
-
-
-var selectedStart = -1;
-var selectedEnd = -1;
-var selectedTime = 0; // to create sin effect
-
-var WIDTH = window.innerWidth;
-var HEIGHT = window.innerHeight;
-
-
-var cnvs = document.createElement('canvas');
-
-var ctx = cnvs.getContext('2d');
-
-resize();
-
-// move the map
-var translatedX = (localStorage.hadIntroduction===1)?-10:-710;
-localStorage.hadIntroduction = 1;
-var translatedY = -64;
-var currentScale = 1;
-
-var error = null;
-
-var hallOfFame = [];
-
-
-var info = null;
-
-var leftBound = -750;
-var topBound = -64;
-var lastTime = Date.now();
 console.log("show particles:"+localStorage.showParticles);
 
 
 if (typeof localStorage.showParticles === "undefined") {
   localStorage.showParticles = 1;
 }
-
-var nextFrameTime = 0, framesDone;
+if (typeof localStorage.musicOn === "undefined") {
+  localStorage.musicOn = 1;
+}
+if (typeof localStorage.soundOn === "undefined") {
+  localStorage.soundOn = 1;
+}
 
 function loop() {
+  console.log("loop: "+translatedX + "  "+currentScale);
   // Use the identity matrix while clearing the canvas
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, cnvs.width, cnvs.height);
 
 
   // keep in game bounds
-  if (translatedX + WIDTH -50 > world.width/currentScale ) {
-    translatedX = world.width/currentScale -  WIDTH +50;
+  if (translatedX + WIDTH -50 > world.wwidth/currentScale ) {
+    translatedX = world.wwidth/currentScale -  WIDTH +50;
   }
-  if (translatedY + HEIGHT -50 > world.height/currentScale ) {
-    translatedY = world.height/currentScale -  HEIGHT +50;
+  if (translatedY + HEIGHT -50 > world.wheight/currentScale ) {
+    translatedY = world.wheight/currentScale -  HEIGHT +50;
   }
   if (translatedX < leftBound/currentScale) {
     translatedX = leftBound / currentScale;
@@ -206,6 +268,8 @@ function loop() {
     translatedY = topBound / currentScale;
   }
 
+
+  console.log("aloop: "+translatedX+" | "+currentScale);
   ctx.setTransform(1/currentScale, 0, 0, 1/currentScale, -translatedX, -translatedY);
 
 
@@ -216,9 +280,9 @@ function loop() {
   for (var i = 0; i < dustfields.length; i++) {
     var dust = dustfields[i];
     var radgrad = ctx.createRadialGradient(dust.x, dust.y,0,dust.x,dust.y, dust.size);
-    radgrad.addColorStop(0, 'rgba('+dust.color.r+','+dust.color.g+','+dust.color.b+',.2)');
-    radgrad.addColorStop(dust.midpoint, 'rgba('+dust.color.r+','+dust.color.g+','+dust.color.b+',.1)');
-    radgrad.addColorStop(1, 'rgba('+dust.color.r+','+dust.color.g+','+dust.color.b+',0)');
+    radgrad.addColorStop(0, "rgba("+dust.color.r+","+dust.color.g+","+dust.color.b+",.2)");
+    radgrad.addColorStop(dust.midpoint, "rgba("+dust.color.r+","+dust.color.g+","+dust.color.b+",.1)");
+    radgrad.addColorStop(1, "rgba("+dust.color.r+","+dust.color.g+","+dust.color.b+",0)");
 
     ctx.fillStyle = radgrad;
     ctx.fillRect(dust.x-dust.size,dust.y-dust.size,dust.size*2,dust.size*2);
@@ -309,21 +373,19 @@ function drawParticle(particle) {
         circleF(particle.x, particle.y, inter(particle.startSize, particle.endSize, v));
 }
 window.onresize = function(event) {
-  resize();
+  rescale();
 };
-function resize() {
+function rescale() {
   WIDTH = window.innerWidth - 9;
   HEIGHT = window.innerHeight - 9;
   console.log(WIDTH+","+HEIGHT);
   cnvs.width = WIDTH;
   cnvs.height = HEIGHT;
-  zoom(1);
-
-
+  if (world.wwidth != 1) {zoom(1);}
 }
 
 window.oncontextmenu = function() {return false;}
-var lastX , lastY, mouseDown, scaling = false, scalingDist, changeAmount = false; // for translating the map
+var lastX=0 , lastY=0, mouseDown, scaling = false, scalingDist, changeAmount = false; // for translating the map
 window.ontouchstart= window.onmousedown = function(event) {
   console.log("touch start");
   if (event.button == 2) {
@@ -358,19 +420,49 @@ window.ontouchstart= window.onmousedown = function(event) {
   }
   var rx = (lastX +translatedX)*currentScale;
   var ry = (lastY +translatedY)*currentScale;
-  if (rx < 0  && rx > -120 && ry <0 && ry > -30) {
+
+
+  if (rx < 0  && rx > -120 && ry <0 && ry > -20) {
     if (localStorage.showParticles == 1) {
       localStorage.showParticles = 0;
     } else {
       localStorage.showParticles = 1;
     }
-    console.log(localStorage.showParticles);
     return;
   }
+
+  if (rx < 0  && rx > -120 && ry <-20 && ry > -50) {
+    if (localStorage.musicOn == 1) {
+      localStorage.musicOn = 0;
+      backgroundMusic.pause();
+    } else {
+      localStorage.musicOn = 1;
+      if (backgroundMusic == null) {
+        loadSong();
+      } else {
+        backgroundMusic.play();
+      }
+    }
+    return;
+  }
+
+  if (rx < 0  && rx > -120 && ry <-50 && ry > -70) {
+    if (localStorage.soundOn == 1) {
+      localStorage.soundOn = 0;
+    } else {
+      localStorage.soundOn = 1;
+    }
+    return;
+  }
+
+
 
   selectedStart = getPlanet(pos);
   if (selectedStart!= -1 && world.planets[selectedStart].owner != player.id) {
     selectedStart = -1;
+  } else if (selectedStart != -1) {
+    // selected own planet
+    playSnd(1);
   }
   selectedTime = 0;
   mouseDown = true;
@@ -408,10 +500,18 @@ window.ontouchmove = window.onmousemove = function(event) {
     if (selectedStart != -1) {
       var plan = getPlanet(pos);
       if (plan != selectedStart) {
+        if (plan != -1 && selectedEnd != plan) {
+          // we selected another planet
+          if (world.planets[plan].owner == player.id) {
+            playSnd(1);
+          } else {
+            playSnd(2);
+          }
+        }
         selectedEnd = plan;
       }
     } else if(mouseDown){ // translate the map
-      ctx.translate(pos.x - lastX, pos.y - lastY);
+      console.log(translatedX+"xxxxx"+translatedY);
       translatedX -= pos.x - lastX;
       translatedY -= pos.y - lastY;
     }
@@ -422,16 +522,15 @@ window.ontouchmove = window.onmousemove = function(event) {
 }
 
 
-var amount = 50; // percent of ships to send
 
 window.ontouchend = window.onmouseup = function(event) {
   if (selectedStart != -1 && selectedEnd != -1) {
 
     // send ships
-    socket.emit('send', {
-      'from': selectedStart,
-      'to': selectedEnd,
-      'amount': amount // in percent
+    socket.emit("send", {
+      "from": selectedStart,
+      "to": selectedEnd,
+      "amount": amount // in percent
     });
     var ships = Math.floor(world.planets[selectedStart].ships * amount /100);
     if (ships <= 0) {return;}
@@ -442,6 +541,7 @@ window.ontouchend = window.onmouseup = function(event) {
       to: selectedEnd,
       justStarted: true
     });
+    playSnd(4);
   }
   selectedStart = -1;
   selectedEnd = -1;
@@ -468,27 +568,34 @@ window.onmousewheel = function (e) {
 }
 
 function zoom(delta) {
-
-
+  console.log("zoom: "+delta+" "+currentScale);
+  var ocs = currentScale;
   currentScale /= delta;
 
-  if ((world.width - leftBound )/currentScale< WIDTH-100) {
-    currentScale = (world.width - leftBound)/(WIDTH-100) ;
+  if ((world.wwidth - leftBound )/currentScale< WIDTH-100) {
+    currentScale = (world.wwidth - leftBound)/(WIDTH-100) ;
+    console.log("leftBound: "+currentScale);
     return;
   }
-  if ((world.height -topBound )/currentScale < HEIGHT - 50) {
-    currentScale = (world.height -topBound )/(HEIGHT-50) ;
-
+  if ((world.wheight -topBound )/currentScale < HEIGHT - 50) {
+    currentScale = (world.wheight -topBound )/(HEIGHT-50) ;
+console.log("topBound: "+currentScale);
     return;
-  }
+  } else
   if (currentScale < 0.2) {
+    console.log("too small: "+currentScale);
+
     currentScale = 0.2;
-    return;
+    delta = ocs/currentScale;
   }
 
+  console.log("ZOOM "+translatedX+" | "+delta);
   // zenter the zooming on the mouse cursor
+  if (delta != 0) {
   translatedX = ((translatedX + lastX) * delta) - lastX;
   translatedY = ((translatedY + lastY) * delta) - lastY;
+  }
+  console.log("azoom: "+translatedX);
 
   // mouse coordinates changed
   //    window.onmousemove
@@ -498,7 +605,6 @@ function zoom(delta) {
 }
 if (document.addEventListener) document.addEventListener("DOMMouseScroll", window.onmousewheel);
 
-var focused = -1;
 function focusPlanet(planet) { // focus the canvas on this planet
 
 
@@ -544,11 +650,6 @@ function getRelativeCoords(event) {
   return { x: event.pageX -5, y: event.pageY -5};
 }
 
-function test() {
-  socket.emit("event", {name: "test"});
-}
-
-
 function drawPlanet(p) {
   var planet = world.planets[p];
   color(world.players[planet.owner].color);
@@ -563,7 +664,7 @@ function drawPlanet(p) {
     circleS(planet.x, planet.y, (planet.size+Math.abs(Math.sin(selectedTime/10))*5)+2);
   }
   color(WHITE);
-  text(planet.ships , planet.x, planet.y + planet.size + 12);
+  textF(planet.ships , planet.x, planet.y + planet.size + 12);
 }
 
 function drawFleet(fleet) {
@@ -630,14 +731,14 @@ function addSpace(from, to) {
 }
 
 var exp = ["instructions:",
-"use simple click or touch so move the field",
-"use two fingers or the mouse wheel to zoom",
-"touch one of your planets and drag to",
-"another to send ships",
+"use simple click or touch t'o move the field",
+"use two fingers or the mouse wheel t'o zo'om",
+"touch one of your plan'ets and drag t'o",
+"another t'o se'nd sh'ips",
 "",
 "a game by:",
-"  @bitowl",
-"  http://bitowl.de"];
+"  @bit'owl",
+"  http://bi'owl.de"];
 
 
 function drawHud() {
@@ -646,27 +747,43 @@ function drawHud() {
   font(64);
   color(WHITE);
   align("left");
-  text(info == null?"space reversed":info, 30, 0);
+  textF(info == null?"space reversed":info, 30, 0);
 
   font(16);
   align("right");
   if (localStorage.showParticles == 1) {
     color("00cc00");
-    text("on",-10, -10);
+    textF("on",-10, -10);
   } else {
     color("cc0000");
-    text("off", -10, -10);
+    textF("off", -10, -10);
+  }
+  if (localStorage.musicOn == 1) {
+    color("00cc00");
+    textF("on",-10, -30);
+  } else {
+    color("cc0000");
+    textF("off", -10, -30);
+  }
+  if (localStorage.soundOn == 1) {
+    color("00cc00");
+    textF("on",-10, -50);
+  } else {
+    color("cc0000");
+    textF("off", -10, -50);
   }
   color(WHITE);
-  text("particles: ", -30, -10);
+  textF("par'ticles: ", -30, -10);
+  textF("music: ", -30, -30);
+  textF("sound: ", -30, -50);
 
   if (translatedX < 0) { // online users and hall of fame
-    text("online: ", 0, 20);
+    textF("onli'ne: ", 0, 20);
     var position = 40;
     for (var i = 0; i < world.players.length; i++) {
       if (world.players[i].online) {
         color(world.players[i].color);
-        text(world.players[i].name, 0 - 10, position);
+        textF(world.players[i].name, 0 - 10, position);
         position+= 18;
       }
     }
@@ -674,19 +791,19 @@ function drawHud() {
     position += 20;
     color("d4af37");
     font("bold 16");
-    text("Hall of Fame", 0, position);
+    textF("Hall of Fame", 0, position);
     position += 18;
     font(16);
 
-    text("User", -150, position);
-    text("Date", -70, position);
-    text("Players", 0, position);
+    textF("User", -150, position);
+    textF("Date", -70, position);
+    textF("Players", 0, position);
     position += 20;
     color(WHITE);
     for (var i = hallOfFame.length-1; i >= 0; i--) {
-      text(hallOfFame[i].user, -150, position);
-      text(hallOfFame[i].date, -70, position);
-      text(hallOfFame[i].players, 0, position);
+      textF(hallOfFame[i].user, -150, position);
+      textF(hallOfFame[i].date, -70, position);
+      textF(hallOfFame[i].players, 0, position);
       position += 18;
     }
 
@@ -695,7 +812,7 @@ function drawHud() {
   if (translatedX < -370 /currentScale) {
     align("left");
     for (var i = 0; i < exp.length; i++) {
-      text(exp[i],-700,i*18);
+      textF(exp[i],-700,i*18);
     }
 
   }
@@ -710,19 +827,23 @@ function drawHud() {
   rectF(WIDTH - 50, HEIGHT - 50, 50, 50);
 
   color("000000");
-  text(amount + "%", 25, HEIGHT-20);
-  text(">", WIDTH-25, HEIGHT-20);
+  textF(amount + "%", 25, HEIGHT-20);
+  textF(">", WIDTH-25, HEIGHT-20);
 
   if (error != null) {
     color("ff0000");
     font(32);
-    text(error, WIDTH/2,HEIGHT/2 - 40);
+    textF(error, WIDTH/2,HEIGHT/2 - 40);
     color(WHITE);
     font(24);
-    text("touch to restart", WIDTH/2, HEIGHT/2);
+    textF("touch t'o restart", WIDTH/2, HEIGHT/2);
   }
 
 }
+
+
+init();
+
 
 // canvas functions
 function color(c) {
@@ -754,7 +875,7 @@ function circleF(x, y, r) {
 function font(f) {
   ctx.font = f+"px sans-serif";
 }
-function text(t, x, y) {
+function textF(t, x, y) {
   ctx.fillText(t, x, y);
 }
 

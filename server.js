@@ -1,4 +1,4 @@
-var io = require('sandbox-io');
+var io = require("sandbox-io");
 
 var sockets = [];
 var secrets = ["gaia"];
@@ -8,12 +8,41 @@ var currentId = 1;
 var INITIAL_WIDTH = 1000;
 var INITIAL_HEIGHT = 1000;
 
-io.on('connection', function(socket){
+
+var world = {
+  planets:[],
+  fleets:[],
+  players:[],
+  arrived:[], // ships that arrived in this turn
+  wwidth: INITIAL_WIDTH,
+  wheight: INITIAL_HEIGHT
+}
+
+
+var gaia = {
+  id: 0,
+  color: "cccccc",
+  name: "ga'ia",
+  online: false
+}; // gaia player
+world.players.push(gaia);
+
+var hallOfFame = db("hof");
+if (typeof hallOfFame == "undefined") {
+  hallOfFame = [];
+}
+// background stuff
+var dustfields = [];
+var starfield = [];
+
+
+
+io.on("connection", function(socket){
   var me;
-  socket.on('join', function(data) {
+  socket.on("join", function(data) {
     if (me) {return;}
     if (data.name.length > 12) {
-      socket.emit('fail', {message:'name has to be 12 characters or shorter.'})
+      socket.emit("fail", {message:"na'me has t'o be 12 characters or shorter."})
       return;
     }
     var myid = currentId++;
@@ -29,15 +58,15 @@ io.on('connection', function(socket){
       world.players.push(me);
       // create my own planet
       createPlanet(me, 25, 100);
-      socket.emit('player', me);
-      socket.emit('hof', hallOfFame);
-      socket.emit('dustfields', dustfields);
-      socket.emit('starfield', starfield);
-      socket.emit('secret', {'secret': secret});
+      socket.emit("player", me);
+      socket.emit("hof", hallOfFame);
+      socket.emit("dustfields", dustfields);
+      socket.emit("starfield", starfield);
+      socket.emit("secret", {"secret": secret});
 
       update(socket); // send this player an initial game state
     });
-    socket.on('rejoin', function(data) {
+    socket.on("rejoin", function(data) {
       for (var i = 0; i < secrets.length; i++) {
         console.log(data);
         console.log(secrets[i]+" ==? "+data.secret);
@@ -45,19 +74,19 @@ io.on('connection', function(socket){
           // this is us
           me = world.players[i];
           me.online = true;
-          socket.emit('player', me);
-          socket.emit('hof', hallOfFame);
-          socket.emit('dustfields', dustfields);
-          socket.emit('starfield', starfield);
+          socket.emit("player", me);
+          socket.emit("hof", hallOfFame);
+          socket.emit("dustfields", dustfields);
+          socket.emit("starfield", starfield);
           update(socket);
           sockets[i] = socket;
 
           return;
         }
       }
-      socket.emit('fail', {message:''}); // this secret is probably from an old game
+      socket.emit("fail", {message:""}); // this secret is probably from an old game
     });
-  socket.on('send', function(data){ // a player wants to send ship
+  socket.on("send", function(data){ // a player wants to send ship
     var ships = Math.floor(world.planets[data.from].ships * Math.min(data.amount,100) /100);
     if (ships <= 0) {return;} // no ships to send
     world.planets[data.from].ships -= ships;
@@ -66,42 +95,15 @@ io.on('connection', function(socket){
 
   });
 
-  socket.on('disconnect', function(){
+  socket.on("disconnect", function(){
     if (typeof me != "undefined") {
       me.online = false;
-      console.log("player "+me.name+"("+me.id+") diconnected");
+      console.log("pl'ayer "+me.name+"("+me.id+") diconnected");
     }
     // TODO remove this socket from sockets
   });
 
 });
-
-var world = {
-  planets:[],
-  fleets:[],
-  players:[],
-  arrived:[], // ships that arrived in this turn
-  width: INITIAL_WIDTH,
-  height: INITIAL_HEIGHT
-}
-
-
-var gaia = {
-  id: 0,
-  color: "cccccc",
-  name: "gaia",
-  online: false
-}; // gaia player
-world.players.push(gaia);
-
-var hallOfFame = db("hof");
-if (typeof hallOfFame == "undefined") {
-  hallOfFame = [];
-}
-// background stuff
-var dustfields = [];
-var starfield = [];
-
 
 
 
@@ -110,11 +112,11 @@ function resetMap() {
     planets:[],
     fleets:[],
     players:[gaia],
-    width: INITIAL_WIDTH,
-    height: INITIAL_HEIGHT
+    wwidth: INITIAL_WIDTH,
+    wheight: INITIAL_HEIGHT
   }
   currentId = 1;
-  secrets = ['gaia'];
+  secrets = ["ga'ia"];
   for (key in sockets) {
     if (sockets[key]) sockets[key].disconnect();
   }
@@ -135,17 +137,17 @@ function init() {
 
   for (var i = 0; i < 5; i++) {
     dustfields.push( {
-      x: rndI(0,world.width),
-      y: rndI(0,world.height),
-      color: randomColorRGB(100,0.1),
+      x: rndI(0,world.wwidth),
+      y: rndI(0,world.wheight),
+      color: randomColorR(100,0.1),
       size: rndI(300, 400),
       midpoint: rnd(0.2,0.5)
     });
   }
   for (var i = 0; i < 500; i++) {
     var part = {
-      x: rndI(0,world.width),
-      y: rndI(0,world.height),
+      x: rndI(0,world.wwidth),
+      y: rndI(0,world.wheight),
       color: {r:rndI(230,255),
         g:rndI(250,255),b:rndI(120,255),a:rndI(2,10)/10},
      size:Math.floor(rnd(0.2,1)*100)/100};
@@ -155,40 +157,36 @@ function init() {
 
 
   // start the game loop
-  turn();
+  doTurn();
 }
 
 function createPlanet(owner, size, ships) {
   // TODO check that the planet does not collide with others
-  var x = rndI(size,world.width-size);
-  var y = rndI(size,world.height-size);
+  var x = rndI(size,world.wwidth-size);
+  var y = rndI(size,world.wheight-size);
 
   for (var i = 0; i < world.planets.length; i++) {
     if (dist({x:x, y:y}, world.planets[i]) < size+ world.planets[i].size + 10) { // 10 extra padding
       // retry finding a position
       i = -1;
-      x = rndI(size,world.width-size);
-      y = rndI(size,world.height-size);
+      x = rndI(size,world.wwidth-size);
+      y = rndI(size,world.wheight-size);
 
       // grow the world with each failed try to place a planet, so that there will be more space
-      world.width++;
-      world.height++;
+      world.wwidth++;
+      world.wheight++;
       continue;
     }
   }
 
   world.planets.push(new Planet(x,y, size, owner.id, ships));
 }
-function getPosition(size) {
 
-
-}
-
-function turn() {
-  world.arrived = []; // don't show the ones from last turn again
+function doTurn() {
+  world.arrived = []; // don"t show the ones from last turn again
 
   for (var i = 0; i < world.fleets.length; i++) {
-    world.fleets[i].turn();
+    world.fleets[i].doTurn();
   }
   for (var i = 0; i < world.fleets.length; i++) {
       if (world.fleets[i].todelete) {
@@ -223,7 +221,7 @@ function turn() {
   }
 
   if (owner == 0) {tt();return; }// gaia cannot win
-var dt =  new Date();
+  var dt =  new Date();
   // player won
   hallOfFame.push({
     date: dt.getDate() + "."+ (dt.getMonth()+1) +"."+(dt.getYear()-100),
@@ -232,23 +230,21 @@ var dt =  new Date();
   });
   db("hof", hallOfFame);
 
-  sockets[owner].emit('won', {
+  sockets[owner].emit("won", {
     players:  world.players.length -1
   });
   resetMap();
 }
 
 function tt() { // turn timeout
-  setTimeout(turn, 3000);
+  setTimeout(doTurn, 3000);
 }
 
 function update(socket) { // update a socket
-  socket.emit('turn', world);
+  socket.emit("turn", world);
 }
 
 init();
-
-
 
 
 // objects
@@ -258,11 +254,11 @@ function Planet(x, y, size, owner, ships) {
   this.size = size;
   this.owner = owner;
   this.ships = ships;
-  this.limit = size*10; // production limit
+  this.limit = size*10 + rndI(-50,50); // production limit
 }
 function produceShips(planet){
   var prod = planet.size / 10;  // production per turn defined by size
-  if (world.players[planet.owner].online) {prod*=2;} // faster production, when you're online
+  if (world.players[planet.owner].online) {prod*=2;} // faster production, when you"re online
   if (planet.ships <= planet.limit) { // the planet is still able to produce
     planet.ships += Math.floor(prod);
   }
@@ -278,7 +274,7 @@ function Fleet(from, to, ships, turns) {
   this.turns = turns ;// turns will be decreased by 1 to the actual count in the first turn
   this.way = turns; // length of the way
 }
-Fleet.prototype.turn = function() {
+Fleet.prototype.doTurn = function() {
   if (this.justStarted) {
     this.justStarted = false;
   } else {
@@ -300,7 +296,9 @@ Fleet.prototype.turn = function() {
     } else {
       console.log("attack from "+this.owner+" to "+world.planets[this.to].owner);
       // attack
-      world.planets[this.to].ships -= this.ships; // TODO active player more value?
+
+      // online players have defensive bonus
+      world.planets[this.to].ships -= Math.floor((world.players[world.planets[this.to].owner].online?0.7:1)*this.ships); // TODO active player more value?
       if (world.planets[this.to].ships < 0) {
         // successfull attack
         world.planets[this.to].ships *= -1; // the rest of the ships stays on the planet
@@ -326,6 +324,9 @@ Fleet.prototype.turn = function() {
 }
 
 // utils
+function rnd(min, max) {
+  return min +Math.random() * (max - min);
+}
 function rndI(min, max) {
   return min + Math.floor(Math.random() * (max - min + 1));
 }
@@ -337,17 +338,17 @@ function randomColor(brightness){
     var r = 255-brightness;
     var n = 0|((Math.random() * r) + brightness);
     var s = n.toString(16);
-    return (s.length==1) ? '0'+s : s;
+    return (s.length==1) ? "0"+s : s;
   }
   return randomChannel(brightness) + randomChannel(brightness) + randomChannel(brightness);
 }
-function randomColorRGB(brightness, alpha){
+function randomColorR(brightness, alpha){
   function randomChannel(brightness){
     var r = 255-brightness;
     var n = 0|((Math.random() * r) + brightness);
     return n;
   //  var s = n.toString(16);
-    //return (s.length==1) ? '0'+s : s;
+    //return (s.length==1) ? "0"+s : s;
   }
   return {
   r:randomChannel(brightness),
@@ -355,7 +356,4 @@ function randomColorRGB(brightness, alpha){
     b: randomChannel(brightness),
     a:alpha
   };
-}
-function rnd(min, max) {
-  return min +Math.random() * (max - min);
 }

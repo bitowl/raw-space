@@ -1,6 +1,17 @@
 # keywords that may be destroyed
 return:RETURN
 Storage:STORAGE
+prototype:PROTOTYPE
+toString:TOSTRING
+Stop:STOP
+restore:RESTORE
+resize:RESIZE
+touch:TOUCH
+#
+# localStorage
+secret:lA
+hadIntroduction:lB
+showParticles:lC
 #
 # network transmitted names
 rejoin:a
@@ -9,14 +20,16 @@ fail:c
 hof:d
 turn:e
 won:f
-# globals
+message:g
+send:h
+starfield:k
+dustfields:l
+# globals  gF, gG
 lastTurn:gA
 nextTurnDelta:gB
 player:gC
 socket:gD
 particles:gE
-starfield:gF
-dustfields:gG
 hallOfFame:gH
 world:gI
 selectedStart:gJ
@@ -38,10 +51,12 @@ exp:gZ
 lastX:hA
 lastY:hB
 mouseDown:hC
-scaling:hD
 scalingDist:hE
-changeAmoun:hF
+scaling:hD
+changeAmount:hF
 focused:hG
+currentId:hH
+gaia:hI
 #
 # variables
 #
@@ -54,8 +69,27 @@ way:vF
 online:vG
 name:vH
 from:vI
+victory:vU
+todelete:vX
 to:vJ
 arrived:vK
+ttl:vL
+startColor:vM
+endColor:vN
+startSize:vO
+endSize:vP
+speedX:vQ
+speedY:vR
+midpoint:vS
+size:vT
+fight:vV
+justStarted:vW
+wwidth:vX
+wheight:vY
+user:vZ
+update:fU
+date:wA
+limit:wB
 #
 # functions
 init:fA
@@ -77,15 +111,15 @@ inter:fP
 dist:fQ
 resetMap:fR
 createPlanet:fS
-turn:fT
-update:fU
+doTurn:fT
 Planet:fV
 produceShips:fW
 Fleet:fX
-randomColorRGB:fY
+randomColor:fY
 lineS:fZ
-rectS:iA
-circleS:iB
+circleS:iA
+textF:iB
+rescale:iC
 #
 # constants
 TURN_LENGTH:cA
@@ -96,11 +130,15 @@ WIDTH:cC
 HEIGHT:cD
 SPEED:cE
 #
-# localStorage
-secret:lA
-hadIntroduction:lB
-showParticles:lC
-#
 # resubstitute
 RETURN:return
 STORAGE:Storage
+PROTOTYPE:prototype
+TOSTRING:toString
+STOP:Stop
+RESTORE:restore
+RESIZE:resize
+TOUCH:touch
+#
+# remove ' as placeholders in strings to keep them intact
+':
