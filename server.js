@@ -23,7 +23,8 @@ var gaia = {
   id: 0,
   color: "cccccc",
   name: "ga'ia",
-  online: false
+  online: false,
+  planets: 0
 }; // gaia player
 world.players.push(gaia);
 
@@ -42,7 +43,11 @@ io.on("connection", function(socket){
   socket.on("join", function(data) {
     if (me) {return;}
     if (data.name.length > 12) {
-      socket.emit("fail", {message:"na'me has t'o be 12 characters or shorter."})
+      socket.emit("fail", {message:"na'me has to be 12 characters or shorter."})
+      return;
+    }
+    if (data.name.length < 3) {
+      socket.emit("fail", {message:"na'me has to be 3 characters or longer."})
       return;
     }
     var myid = currentId++;
@@ -53,11 +58,12 @@ io.on("connection", function(socket){
         id: myid,
         name: data.name, // TODO add security check
         color: randomColor(80),
-        online: true
+        online: true,
+        planets: 0
       };
       world.players.push(me);
       // create my own planet
-      createPlanet(me, 25, 100);
+      pP(me);
       socket.emit("player", me);
       socket.emit("hof", hallOfFame);
       socket.emit("dustfields", dustfields);
@@ -73,6 +79,18 @@ io.on("connection", function(socket){
         if (secrets[i] == data.secret) {
           // this is us
           me = world.players[i];
+
+          if (me.deadTil) {
+            if (me.deadTil < Date.now()) {
+              // revive
+              pP(me);
+              me.deadTil = null;
+            } else {
+              socket.emit("dead", {dead:me.deadTil-Date.now()});
+            }
+          }
+
+
           me.online = true;
           socket.emit("player", me);
           socket.emit("hof", hallOfFame);
@@ -87,11 +105,11 @@ io.on("connection", function(socket){
       socket.emit("fail", {message:""}); // this secret is probably from an old game
     });
   socket.on("send", function(data){ // a player wants to send ship
-    var ships = Math.floor(world.planets[data.from].ships * Math.min(data.amount,100) /100);
+    var ships = Math.floor(world.planets[data.fromP].ships * Math.min(data.amount,100) /100);
     if (ships <= 0) {return;} // no ships to send
-    world.planets[data.from].ships -= ships;
-    var turns = Math.ceil(dist(world.planets[data.from], world.planets[data.to])/100); // ships fly 100px per turn
-    world.fleets.push(new Fleet(data.from, data.to, ships, turns));
+    world.planets[data.fromP].ships -= ships;
+    var turns = Math.ceil(dist(world.planets[data.fromP], world.planets[data.toP])/100); // ships fly 100px per turn
+    world.fleets.push(new Fleet(data.fromP, data.toP, ships, turns));
 
   });
 
@@ -105,7 +123,12 @@ io.on("connection", function(socket){
 
 });
 
+function pP(me) {
 
+  createPlanet(me, 10, 100);
+  createPlanet(me, 10, 100);
+  createPlanet(me, 25, 200);
+}
 
 function resetMap() {
   world = {
@@ -132,7 +155,7 @@ function resetMap() {
 
 function init() {
   for (var i = 0; i < 30; i++) {
-    createPlanet(gaia, rndI(10,30), rndI(0, 20));
+    createPlanet(gaia, rndI(10,30), rndI(0, 100));
   }
 
   for (var i = 0; i < 5; i++) {
@@ -180,6 +203,8 @@ function createPlanet(owner, size, ships) {
   }
 
   world.planets.push(new Planet(x,y, size, owner.id, ships));
+  owner.planets++;
+
 }
 
 function doTurn() {
@@ -254,20 +279,24 @@ function Planet(x, y, size, owner, ships) {
   this.size = size;
   this.owner = owner;
   this.ships = ships;
-  this.limit = size*10 + rndI(-50,50); // production limit
+  this.limit = size*15 + rndI(-50,50); // production limit
 }
 function produceShips(planet){
   var prod = planet.size / 10;  // production per turn defined by size
   if (world.players[planet.owner].online) {prod*=2;} // faster production, when you"re online
-  if (planet.ships <= planet.limit) { // the planet is still able to produce
+
+  // calculate the limit based on the planets a player owns
+  var limit = planet.limit / Math.max(1, Math.min(5, world.players[planet.owner].planets/8));
+//  console.log("limit: "+limit+"/"+planet.limit);
+  if (planet.ships <= limit) { // the planet is still able to produce
     planet.ships += Math.floor(prod);
   }
 }
 
-function Fleet(from, to, ships, turns) {
-  this.from = from;
-  this.owner = world.planets[from].owner;
-  this.to = to;
+function Fleet(fromP, toP, ships, turns) {
+  this.fromP = fromP;
+  this.owner = world.planets[fromP].owner;
+  this.toP = toP;
   this.ships = ships;
   console.log(turns+" turns");
   this.justStarted = true;
@@ -283,37 +312,67 @@ Fleet.prototype.doTurn = function() {
   if (this.turns <= 0) {
     this.todelete = true;
 
-    if (world.planets[this.to].owner == this.owner) {
+    if (world.planets[this.toP].owner == this.owner) {
       world.arrived.push({
-        from: this.from,
-        to: this.to,
+        fromP: this.fromP,
+        toP: this.toP,
         owner: this.owner,
         fight: false
       });
       console.log("shipment");
       // friendly shipment
-      world.planets[this.to].ships += this.ships;
+      world.planets[this.toP].ships += this.ships;
     } else {
-      console.log("attack from "+this.owner+" to "+world.planets[this.to].owner);
+      console.log("attack from "+this.owner+" to "+world.planets[this.toP].owner);
       // attack
 
-      // online players have defensive bonus
-      world.planets[this.to].ships -= Math.floor((world.players[world.planets[this.to].owner].online?0.7:1)*this.ships); // TODO active player more value?
-      if (world.planets[this.to].ships < 0) {
+      var defender = world.players[world.planets[this.toP].owner];
+      console.log(defender);
+      var attackModifier =
+        (0.7+0.4*(defender.planets/world.planets.length))  // smaller players have defensive bonus
+        *(defender.online?0.7:1);      // online players have defensive bonus
+
+        var attackStrength = Math.floor(attackModifier*this.ships);
+
+      console.log("planets: "+defender.planets+" / "+world.planets.length);
+      console.log((defender.planets/world.planets.length));
+
+
+      console.log("planet bonus: "+ (0.7+0.4*(defender.planets/world.planets.length)));
+      console.log("attack modifier: " + attackModifier);
+      console.log("attack: " + attackStrength +" / " + this.ships);
+
+      if (world.planets[this.toP].ships < attackStrength) {
         // successfull attack
-        world.planets[this.to].ships *= -1; // the rest of the ships stays on the planet
-        world.planets[this.to].owner = this.owner;
+        console.log("pre: "+world.planets[this.toP].ships);
+        world.planets[this.toP].ships = Math.floor(this.ships - (world.planets[this.toP].ships/attackModifier)); // the rest of the ships stays on the planet
+        console.log("after: "+world.planets[this.toP].ships);
+
+        var lostGuy = world.planets[this.toP].owner;
+        world.players[lostGuy].planets--;
+        world.players[this.owner].planets++;
+
+        world.planets[this.toP].owner = this.owner;
+
+        checkAlive(lostGuy);
+
         world.arrived.push({
-          from: this.from,
-          to: this.to,
+          fromP: this.fromP,
+          toP: this.toP,
           owner: this.owner,
           fight: true,
           victory: true
         });
       } else {
+        world.planets[this.toP].ships -= attackStrength;
+
+        // unsuccessfull attack
+        // might be the last ship of the owner
+        checkAlive(this.owner);
+
         world.arrived.push({
-          from: this.from,
-          to: this.to,
+          fromP: this.fromP,
+          toP: this.toP,
           owner: this.owner,
           fight: true,
           victory: false
@@ -321,6 +380,36 @@ Fleet.prototype.doTurn = function() {
       }
     }
   }
+}
+
+function checkAlive(lostGuy) {
+
+  // has the
+  var stillAlive = false;
+  for (var i = 0; i < world.planets.length; i++) {
+    if (world.planets[i].owner == lostGuy) {
+      stillAlive = true;
+      break;
+    }
+  }
+
+  if (!stillAlive) {
+    for (var i = 0; i < world.fleets.length; i++) {
+      if (!world.fleets[i].todelete && world.fleets[i].owner == lostGuy) {
+        stillAlive = true;
+        break;
+      }
+    }
+  }
+
+  if (!stillAlive) {
+    // that was his last planet
+    world.players[lostGuy].deadTil = Date.now() + 30000;
+    if (sockets[lostGuy]) {
+      sockets[lostGuy].emit("dead", {dead:30000});
+    }
+  }
+
 }
 
 // utils

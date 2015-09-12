@@ -1,5 +1,7 @@
 var TURN_LENGTH = 3000;
 
+// localStorage.clear();
+
 var lastTurn;
 var nextTurnDelta; // delta to the next turn (0: lastTurn just happend  1: nextTurn should be now)
 
@@ -37,7 +39,7 @@ var ctx = cnvs.getContext("2d");
 
 console.log("INTRO: "+localStorage.hadIntroduction);
 // move the map
-var translatedX = (localStorage.hadIntroduction==1)?-10:-710;
+var translatedX = (localStorage.hadIntroduction==1)?-10:-730;
 localStorage.hadIntroduction = 1;
 var translatedY = -64;
 var currentScale = 1;
@@ -49,21 +51,36 @@ var hallOfFame = [];
 
 var info = null;
 
-var leftBound = -750;
+var leftBound = -780;
 var topBound = -70;
 var lastTime = Date.now();
 
 
 var nextFrameTime = 0, framesDone;
-var amount = 50; // percent of ships to send
+if (typeof localStorage.amount === "undefined" || isNaN(localStorage.amount)) {
+  localStorage.amount = 50; // percent of ships to send
+}
 var focused = -1;
 
 
 
 var mp, backgroundMusic = null, loadingStart;
+var dead = -1;
+
+
+
+if (typeof localStorage.showParticles === "undefined") {
+  localStorage.showParticles = 1;
+}
+if (typeof localStorage.musicOn === "undefined") {
+  localStorage.musicOn = 0;
+}
+if (typeof localStorage.soundOn === "undefined") {
+  localStorage.soundOn = 1;
+}
 
 function loadSong() {
-  info = "loading music...";
+  info = "loading music... 0%";
   setTimeout(function() {
 
     loadingStart = Date.now();
@@ -76,6 +93,7 @@ function loadSong() {
 // load music
 function genSound() {
   var progress =mp.generate();
+  info = "loading music... " + Math.floor(progress * 100) + "%";
   console.log("progress: "+progress+" "+Date.now());
     if (progress <1) {
       if (Date.now()-loadingStart > progress * 20000) {
@@ -84,7 +102,7 @@ function genSound() {
         setTimeout(function() {info=null;}, 5000);
         localStorage.musicOn = 0;
       } else {
-        genSound();
+        setTimeout(genSound, 100);
       }
     } else {
 
@@ -126,6 +144,9 @@ function init() {
     }
     socket.emit("join", {name: name});
   });
+  socket.on("dead", function(data) {
+    dead = data.dead;
+  });
 
   socket.on("player", function(data) {
     player = data;
@@ -163,14 +184,14 @@ function init() {
     world = data;
     lastTurn = Date.now();
 
+
     // add particles for every crashing fleet
     if (particles) {
       for (var i = 0; i < world.arrived.length; i++) {
-
         var fleet = world.arrived[i];
         if (fleet.fight) {
-          var from = world.planets[fleet.from];
-          var to = world.planets[fleet.to];
+          var from = world.planets[fleet.fromP];
+          var to = world.planets[fleet.toP];
 
           var ang = Math.atan2(from.y-to.y, from.x-to.x);
           var x= Math.cos(ang)*(from.size+5) + to.x; // 5: radius of the fleet
@@ -203,12 +224,12 @@ function init() {
 
       rescale();
       // we can start the game now
-      loop();
+      doLoop();
     }
 
     console.log("recieved world");
     console.log(world);
-    // check that we are still alive
+/*    // check that we are still alive
     for (var i = 0; i < world.planets.length; i++) {
       if(world.planets[i].owner == player.id) {
         return; // we have a planet
@@ -220,34 +241,34 @@ function init() {
       }
     }
 
-    error = "you died";
-    localStorage.secret = null;
+    error = "you died";*/
+//    localStorage.secret = null;
 
   });
   socket.on("won", function(data) {
     error = "You w'on a game with " + data.players+" pla'yers!";
   });
   socket.on("disconnect", function() {
-    if (error == null) error = "disconnected fr'om server";
+    if (error == null) error = "disconnected from server";
   });
 
 
 }
 
-console.log("show particles:"+localStorage.showParticles);
+
+function doLoop() {
+
+  var time = Date.now();
+  var delta = time-lastTime;
+
+  if (dead > 0) {
+    dead -= delta;
+    if (dead < 0) {
+      dead = -2;
+    }
+  }
 
 
-if (typeof localStorage.showParticles === "undefined") {
-  localStorage.showParticles = 1;
-}
-if (typeof localStorage.musicOn === "undefined") {
-  localStorage.musicOn = 1;
-}
-if (typeof localStorage.soundOn === "undefined") {
-  localStorage.soundOn = 1;
-}
-
-function loop() {
   console.log("loop: "+translatedX + "  "+currentScale);
   // Use the identity matrix while clearing the canvas
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -313,8 +334,7 @@ function loop() {
   if (localStorage.showParticles == 1) {
     ctx.globalCompositeOperation = "screen"; // additive blending
 
-    var time = Date.now();
-    var delta = time-lastTime;
+
 
     framesDone++;
     if (nextFrameTime < time) {
@@ -340,7 +360,6 @@ function loop() {
 
 
     }
-    lastTime = time;
 
     ctx.globalCompositeOperation = "source-over";
   }
@@ -356,7 +375,9 @@ function loop() {
   drawHud();
 
 
-  requestAnimationFrame(loop);
+  lastTime = time;
+
+  requestAnimationFrame(doLoop);
 }
 
 
@@ -385,6 +406,7 @@ function rescale() {
 }
 
 window.oncontextmenu = function() {return false;}
+
 var lastX=0 , lastY=0, mouseDown, scaling = false, scalingDist, changeAmount = false; // for translating the map
 window.ontouchstart= window.onmousedown = function(event) {
   console.log("touch start");
@@ -392,7 +414,7 @@ window.ontouchstart= window.onmousedown = function(event) {
     event.preventDefault();
     return false;
   }
-  if (error != null) {
+  if (error != null || (dead < 0 && dead != -1)) {
     location.reload();
     return;
   }
@@ -403,13 +425,14 @@ window.ontouchstart= window.onmousedown = function(event) {
   lastX = pos.x;
   lastY = pos.y;
 
-  if (lastX < 50 && lastY > HEIGHT-50) {
+  if (lastX < 150 && lastY > HEIGHT-50) {
     changeAmount = true;
     return;
   }
   if (lastX > WIDTH-50 && lastY > HEIGHT-50) {
     // center on planet
     focusNext();
+    playSnd(1);
     return;
   }
   if (lastX < 50 && lastY < 50) {
@@ -424,8 +447,10 @@ window.ontouchstart= window.onmousedown = function(event) {
 
   if (rx < 0  && rx > -120 && ry <0 && ry > -20) {
     if (localStorage.showParticles == 1) {
+      playSnd(6);
       localStorage.showParticles = 0;
     } else {
+      playSnd(5);
       localStorage.showParticles = 1;
     }
     return;
@@ -434,7 +459,10 @@ window.ontouchstart= window.onmousedown = function(event) {
   if (rx < 0  && rx > -120 && ry <-20 && ry > -50) {
     if (localStorage.musicOn == 1) {
       localStorage.musicOn = 0;
-      backgroundMusic.pause();
+      if (backgroundMusic != null) {
+        backgroundMusic.pause();
+      }
+      playSnd(6);
     } else {
       localStorage.musicOn = 1;
       if (backgroundMusic == null) {
@@ -442,6 +470,7 @@ window.ontouchstart= window.onmousedown = function(event) {
       } else {
         backgroundMusic.play();
       }
+      playSnd(5);
     }
     return;
   }
@@ -451,6 +480,7 @@ window.ontouchstart= window.onmousedown = function(event) {
       localStorage.soundOn = 0;
     } else {
       localStorage.soundOn = 1;
+      playSnd(5);
     }
     return;
   }
@@ -476,9 +506,7 @@ window.ontouchstart= window.onmousedown = function(event) {
   event.preventDefault();
 }
 window.ontouchmove = window.onmousemove = function(event) {
-  console.log("move");
   if (scaling) {
-    console.log("saling");
     // zoom around the center between both fingers
     lastX = (event.touches[0].pageX + event.touches[1].pageX)/2;
     lastY = (event.touches[0].pageY + event.touches[1].pageY)/2;
@@ -490,8 +518,8 @@ window.ontouchmove = window.onmousemove = function(event) {
   }else if (changeAmount) {
     console.log("change amount");
     var pos = getRelativeCoords(event);
-    amount += (pos.x-lastX + pos.y - lastY) / 4;
-    amount = Math.floor(Math.max(1, Math.min(100, amount)));
+    var amount = parseInt(localStorage.amount)+(pos.x-lastX /*+ pos.y - lastY*/);
+    localStorage.amount = Math.floor(Math.max(1, Math.min(100, amount)));
     lastX = pos.x;
     lastY = pos.y;
   } else {
@@ -501,6 +529,15 @@ window.ontouchmove = window.onmousemove = function(event) {
       var plan = getPlanet(pos);
       if (plan != selectedStart) {
         if (plan != -1 && selectedEnd != plan) {
+
+          // calculate distance
+          var start = world.planets[selectedStart];
+          var end = world.planets[plan];
+          console.log(dist(end.x-start.x, end.y-start.y));
+          if (dist(end.x-start.x, end.y-start.y) > world.width/3) {
+            selectedEnd = -1;
+            return;
+          }
           // we selected another planet
           if (world.planets[plan].owner == player.id) {
             playSnd(1);
@@ -528,20 +565,21 @@ window.ontouchend = window.onmouseup = function(event) {
 
     // send ships
     socket.emit("send", {
-      "from": selectedStart,
-      "to": selectedEnd,
-      "amount": amount // in percent
+      "fromP": selectedStart,
+      "toP": selectedEnd,
+      "amount": parseInt(localStorage.amount) // in percent
     });
-    var ships = Math.floor(world.planets[selectedStart].ships * amount /100);
-    if (ships <= 0) {return;}
-    world.planets[selectedStart].ships -= ships;
-    world.fleets.push({
-      owner: world.planets[selectedStart].owner,
-      from: selectedStart,
-      to: selectedEnd,
-      justStarted: true
-    });
-    playSnd(4);
+    var ships = Math.floor(world.planets[selectedStart].ships * localStorage.amount /100);
+    if (ships > 0) {
+      world.planets[selectedStart].ships -= ships;
+      world.fleets.push({
+        owner: world.planets[selectedStart].owner,
+        fromP: selectedStart,
+        toP: selectedEnd,
+        justStarted: true
+      });
+      playSnd(4);
+    }
   }
   selectedStart = -1;
   selectedEnd = -1;
@@ -554,10 +592,11 @@ window.ontouchend = window.onmouseup = function(event) {
 window.onmousewheel = function (e) {
 
   var delta = Math.max(-1, Math.min(1, (e.wheelDelta || -e.detail)));
-  if (e.pageX < 50 && e.pageY > HEIGHT-50) {
+  if (e.pageX < 150 +10 && e.pageY > HEIGHT-50 -10) {
+    console.log("ZOOOM "+delta+" local "+ localStorage.amount);
     // change amount
-    amount += delta * 2;
-    amount = Math.floor(Math.max(1, Math.min(100, amount)));
+    var amount = parseInt(localStorage.amount) +delta * 2;
+    localStorage.amount = Math.floor(Math.max(1, Math.min(100, amount)));
   } else {
     var zm = delta*.2 + 1;
     // zoom
@@ -669,8 +708,8 @@ function drawPlanet(p) {
 
 function drawFleet(fleet) {
 
-  var from = world.planets[fleet.from];
-  var to = world.planets[fleet.to];
+  var from = world.planets[fleet.fromP];
+  var to = world.planets[fleet.toP];
 
 
   var x,y;
@@ -706,7 +745,7 @@ function drawFleet(fleet) {
 
   ctx.save();
   ctx.translate(x, y);
-  ctx.rotate(Math.atan2(world.planets[fleet.to].y- world.planets[fleet.from].y, world.planets[fleet.to].x - world.planets[fleet.from].x));
+  ctx.rotate(Math.atan2(world.planets[fleet.toP].y- world.planets[fleet.fromP].y, world.planets[fleet.toP].x - world.planets[fleet.fromP].x));
   ctx.beginPath();
   ctx.moveTo(-7, -5);
   ctx.lineTo(7,0);
@@ -730,15 +769,61 @@ function addSpace(from, to) {
   };
 }
 
-var exp = ["instructions:",
-"use simple click or touch t'o move the field",
-"use two fingers or the mouse wheel t'o zo'om",
-"touch one of your plan'ets and drag t'o",
-"another t'o se'nd sh'ips",
+//"raw | space is a t'urn based, multipl'ayer",
+//"spacewar game optimised for touch control.",
+
+var exp = ["*Instructions:",
+"",
+"Click and drag to move the field.",
+"Pinch the screen or use the mouse wheel to zo'om.",
+"",
+"Touch one of your plan'ets and drag to",
+"another to se'nd sh'ips.",
+"You can change the percentage of shi'ps that",
+"are se'nt with the slider in the bottom left.",
+"But be careful! A planet without",
+"sh'ips is defenseless agains other pl'ayers.",
+"",
+"Click on the button in the bottom",
+"right to focus the view on one of your pla'nets.",
+"",
+"Capture all plan'ets to win a round and get an",
+"entry in the Hall of Fame.",
+"If there were more pla'yers in your round, you",
+"get more fame, so invite people to play.",
+"",
+"To play just drag to the right.",
+"",
+"",
+"",
+"",
+"*Further Tipps:",
+"",
+"Each tu'rn is three seconds long.",
+"Ship orders can be placed anytime, but",
+"will be executed on the next tu'rn.",
+"As long as both playe'rs are onli'ne, defending",
+"shi'ps are stronger than the attacking ones.",
+"",
+"Bigger plan'ets produce more shi'ps per tu'rn",
+"than smaller ones.",
+"Pla'nets have a l'imit of sh'ips they can store.",
+"If there are more ships on a planet than the limit,",
+"no new ships will be produced (by that planet).",
+"",
+"If you are offline, your ship's will still",
+"exist. But watch out, the situation in the",
+"universe might change.",
+"",
+"",
+"",
+"If you are on a computer, you can tu'rn on music.",
+"If the game runs slow, tur'n off partic'les and sound.",
+"",
 "",
 "a game by:",
-"  @bit'owl",
-"  http://bi'owl.de"];
+"*  @bitowl",
+"*  http://bitowl.de"];
 
 
 function drawHud() {
@@ -747,7 +832,7 @@ function drawHud() {
   font(64);
   color(WHITE);
   align("left");
-  textF(info == null?"space reversed":info, 30, 0);
+  textF(info == null?"raw | space":info, 30, -10);
 
   font(16);
   align("right");
@@ -811,8 +896,20 @@ function drawHud() {
 
   if (translatedX < -370 /currentScale) {
     align("left");
+    var bold = false;
     for (var i = 0; i < exp.length; i++) {
-      textF(exp[i],-700,i*18);
+      if (exp[i].startsWith("*")) {
+        font("bold 16");
+        bold = true;
+
+        textF(exp[i].substring(1),-720,i*18);
+        continue;
+      } else if (bold) {
+        font("16")
+        bold = false;
+      }
+
+      textF(exp[i],-720,i*18);
     }
 
   }
@@ -821,13 +918,20 @@ function drawHud() {
   ctx.setTransform(1, 0, 0, 1, 0, 0); // stuff that stays at the same place of the screen
 
   align("center");
+  font(16);
 
   color(player.color);
-  rectF(0, HEIGHT - 50, 50, 50);
+
+  rectF(0, HEIGHT-35, 150, 20);
+  // slider
+  rectF(localStorage.amount, HEIGHT-50, 50,50);
+//  rectF(0, HEIGHT - 50, 50, 50);
+
+
   rectF(WIDTH - 50, HEIGHT - 50, 50, 50);
 
   color("000000");
-  textF(amount + "%", 25, HEIGHT-20);
+  textF(localStorage.amount + "%", parseInt(localStorage.amount) + 25, HEIGHT-20);
   textF(">", WIDTH-25, HEIGHT-20);
 
   if (error != null) {
@@ -836,7 +940,18 @@ function drawHud() {
     textF(error, WIDTH/2,HEIGHT/2 - 40);
     color(WHITE);
     font(24);
-    textF("touch t'o restart", WIDTH/2, HEIGHT/2);
+    textF("touch to restart", WIDTH/2, HEIGHT/2);
+  } else if (dead != -1) {
+    color("ff0000");
+    font(32);
+    textF("You died!", WIDTH/2,HEIGHT/2 - 40);
+    color(WHITE);
+    font(24);
+    if (dead > 0) {
+      textF("wait " + Math.floor(dead/1000)+ " seconds...", WIDTH/2, HEIGHT/2);
+    } else {
+      textF("touch to respawn", WIDTH/2, HEIGHT/2);
+    }
   }
 
 }

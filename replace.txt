@@ -7,11 +7,15 @@ Stop:STOP
 restore:RESTORE
 resize:RESIZE
 touch:TOUCH
+toChar:TOCHAR
 #
 # localStorage
 secret:lA
 hadIntroduction:lB
 showParticles:lC
+amount:lD
+soundOn:lE
+musicOn:lF
 #
 # network transmitted names
 rejoin:a
@@ -24,6 +28,7 @@ message:g
 send:h
 starfield:k
 dustfields:l
+dead:m
 # globals  gF, gG
 lastTurn:gA
 nextTurnDelta:gB
@@ -46,7 +51,6 @@ topBound:gU
 lastTime:gV
 nextFrameTime:gW
 framesDone:gX
-amount:gY
 exp:gZ
 lastX:hA
 lastY:hB
@@ -56,7 +60,11 @@ scaling:hD
 changeAmount:hF
 focused:hG
 currentId:hH
-gaia:hI
+gaia:gY
+sounds:hI
+backgroundMusic:hJ
+loadingStart:hK
+synth:hL
 #
 # variables
 #
@@ -68,10 +76,10 @@ ships:vE
 way:vF
 online:vG
 name:vH
-from:vI
+fromP:vI
+toP:vJ
 victory:vU
 todelete:vX
-to:vJ
 arrived:vK
 ttl:vL
 startColor:vM
@@ -90,10 +98,15 @@ user:vZ
 update:fU
 date:wA
 limit:wB
+_params:wC
+endPatter:wD
+rowLen:wE
+patternLen:wF
+songData:wG
 #
 # functions
 init:fA
-loop:fB
+doLoop:fB
 drawParticle:fC
 zoom:fD
 focusNext:fE
@@ -120,6 +133,21 @@ lineS:fZ
 circleS:iA
 textF:iB
 rescale:iC
+SfxrParams:iD
+SfxrSynth:iE
+setSettings:iF
+totalReset:iG
+synthWave:iH
+CPlayer:iI
+generate:iJ
+createWave:iK
+addSound:iL
+playSnd:iM
+loadSong:iN
+genSound:iO
+reset:iP
+jsfxr:iQ
+checkAlive:iR
 #
 # constants
 TURN_LENGTH:cA
@@ -139,6 +167,7 @@ STOP:Stop
 RESTORE:restore
 RESIZE:resize
 TOUCH:touch
+TOCHAR:toChar
 #
 # remove ' as placeholders in strings to keep them intact
 ':

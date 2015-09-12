@@ -30,6 +30,6 @@ cd min
 zip js13k.zip *
 mv js13k.zip ~/git/js13k
 cd ~/git/js13k
-ls -lh js13k.zip
+ls -l js13k.zip
 
 #!/bin/bash
