@@ -1,13 +1,12 @@
 var TURN_LENGTH = 3000;
-
-// localStorage.clear();
+var WHITE = "ffffff";
+var WIDTH = window.innerWidth;
+var HEIGHT = window.innerHeight;
 
 var lastTurn;
 var nextTurnDelta; // delta to the next turn (0: lastTurn just happend  1: nextTurn should be now)
 
 var player = {id:0};
-
-var WHITE = "ffffff";
 
 var socket = {}
 
@@ -27,10 +26,6 @@ var world = {
 var selectedStart = -1;
 var selectedEnd = -1;
 var selectedTime = 0; // to create sin effect
-
-var WIDTH = window.innerWidth;
-var HEIGHT = window.innerHeight;
-
 
 var cnvs = document.createElement("canvas");
 
@@ -175,7 +170,6 @@ function init() {
     if (start) {
       document.body.innerHTML="";
       document.body.appendChild(cnvs);
-
 
       rescale();
       // we can start the game now
@@ -379,6 +373,12 @@ window.ontouchstart = window.onmousedown = function(event) {
     return;
   }
 
+  if (rx < -500 && ry < (exp.length-1) * 18 && ry> (exp.length-3)*18) { // homepage
+    window.open("http://bitowl.de");
+    return;
+  }
+
+
   selectedStart = getPlanet(pos);
   if (selectedStart!= -1 && world.planets[selectedStart].owner != player.id) {
     selectedStart = -1;
@@ -423,7 +423,6 @@ window.ontouchmove = window.onmousemove = function(event) {
           /*// calculate distance
           var start = world.planets[selectedStart];
           var end = world.planets[plan];
-          console.log(dist(end.x-start.x, end.y-start.y));
           if (dist(end.x-start.x, end.y-start.y) > world.width/3) {
             selectedEnd = -1;
             return;
@@ -566,7 +565,6 @@ window.onresize = function(event) {
 function rescale() {
   WIDTH = window.innerWidth - 9;
   HEIGHT = window.innerHeight - 9;
-  console.log(WIDTH+","+HEIGHT);
   cnvs.width = WIDTH;
   cnvs.height = HEIGHT;
   if (world.wwidth != 1) {zoom(1);}
@@ -689,18 +687,21 @@ var exp = ["*Instructions:",
 "Each tu'rn is three seconds long.",
 "Ship orders can be placed anytime, but",
 "will be executed on the next tu'rn.",
-"As long as both playe'rs are onli'ne, defending",
-"shi'ps are stronger than the attacking ones.",
 "",
 "Bigger plan'ets produce more shi'ps per tu'rn",
 "than smaller ones.",
 "Pla'nets have a l'imit of sh'ips they can store.",
-"If there are more ships on a planet than the limit,",
-"no new ships will be produced (by that planet).",
+"If there are more ship's on a planet than the lim'it,",
+"no new shi'ps will be produced (by that planet).",
 "",
+"When you get stronger your strength will slowly",
+"reverse. The lim'it of your plan'ets will decrease.",
+"Defending shi'ps are stronger than attacking",
+"ones, but the more sh'ips you have in total, the",
+"lower their defensive strength is.",
 "If you are offline, your ship's will still",
-"exist. But watch out, the situation in the",
-"universe might change.",
+"exist. But watch out! When you come back, the",
+"situation in the universe might be reversed.",
 "",
 "",
 "",
@@ -779,7 +780,7 @@ function drawHud() {
 
   }
 
-  if (translatedX < -370 /currentScale) {
+  if (translatedX < -370 /currentScale) { // introduction
     align("left");
     var bold = false;
     for (var i = 0; i < exp.length; i++) {

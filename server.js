@@ -5,8 +5,8 @@ var secrets = ["gaia"];
 var currentId = 1;
 
 // size of the gamefield
-var INITIAL_WIDTH = 1000;
-var INITIAL_HEIGHT = 1000;
+var INITIAL_WIDTH = 1500;
+var INITIAL_HEIGHT = 1500;
 
 
 var world = {
@@ -54,56 +54,57 @@ io.on("connection", function(socket){
     sockets[myid] = socket;
     var secret = Math.random().toString(36).substring(2);
     secrets[myid] = secret;
-     me ={
-        id: myid,
-        name: data.name,
-        color: randomColor(myid),
-        online: true,
-        planets: 0
-      };
-      world.players.push(me);
-      // create my own planet
-      pP(me);
-      socket.emit("player", me);
-      socket.emit("hof", hallOfFame);
-      socket.emit("dustfields", dustfields);
-      socket.emit("starfield", starfield);
-      socket.emit("secret", {"secret": secret});
+    me ={
+      id: myid,
+      name: data.name,
+      color: randomColor(myid),
+      online: true,
+      planets: 0
+    };
+    world.players.push(me);
+    // create my own planet
+    pP(me);
+    socket.emit("player", me);
+    socket.emit("hof", hallOfFame);
+    socket.emit("dustfields", dustfields);
+    socket.emit("starfield", starfield);
+    socket.emit("secret", {"secret": secret});
 
-      update(socket); // send this player an initial game state
-    });
-    socket.on("rejoin", function(data) {
-      for (var i = 0; i < secrets.length; i++) {
-        console.log(data);
-        console.log(secrets[i]+" ==? "+data.secret);
-        if (secrets[i] == data.secret) {
-          // this is us
-          me = world.players[i];
+    update(socket); // send this player an initial game state
+  });
+  socket.on("rejoin", function(data) {
+    for (var i = 0; i < secrets.length; i++) {
+      if (secrets[i] == data.secret) {
+        // this is us
+        me = world.players[i];
 
-          if (me.deadTil) {
-            if (me.deadTil < Date.now()) {
-              // revive
-              pP(me);
-              me.deadTil = null;
-            } else {
-              socket.emit("dead", {dead:me.deadTil-Date.now()});
-            }
-          }
-
-
-          me.online = true;
-          socket.emit("player", me);
-          socket.emit("hof", hallOfFame);
-          socket.emit("dustfields", dustfields);
-          socket.emit("starfield", starfield);
-          update(socket);
-          sockets[i] = socket;
-
-          return;
+        if (sockets[i]) {
+          sockets[i].disconnect(); // close our old connection
         }
+
+        if (me.deadTil) {
+          if (me.deadTil < Date.now()) {
+            // revive
+            pP(me);
+            me.deadTil = null;
+          } else {
+            socket.emit("dead", {dead:me.deadTil-Date.now()});
+          }
+        }
+
+        me.online = true;
+        socket.emit("player", me);
+        socket.emit("hof", hallOfFame);
+        socket.emit("dustfields", dustfields);
+        socket.emit("starfield", starfield);
+        update(socket);
+        sockets[i] = socket;
+
+        return;
       }
-      socket.emit("fail", {message:""}); // this secret is probably from an old game
-    });
+    }
+    socket.emit("fail", {message:""}); // this secret is probably from an old game
+  });
   socket.on("send", function(data){ // a player wants to send ship
     var ships = Math.floor(world.planets[data.fromP].ships * Math.min(data.amount,100) /100);
     if (ships <= 0) {return;} // no ships to send
@@ -116,18 +117,14 @@ io.on("connection", function(socket){
   socket.on("disconnect", function(){
     if (typeof me != "undefined") {
       me.online = false;
-      console.log("pl'ayer "+me.name+"("+me.id+") diconnected");
+      sockets[me.id] = null;
     }
-    // TODO remove this socket from sockets
   });
-
 });
 
-function pP(me) {
-
-  createPlanet(me, 10, 100);
-  createPlanet(me, 10, 100);
-  createPlanet(me, 25, 200);
+function pP(me) { // create planets for player
+  createPlanet(me, 25, 150);
+  createPlanet(me, 10, 50);
 }
 
 function resetMap() {
@@ -151,14 +148,12 @@ function resetMap() {
   init();
 }
 
-
-
 function init() {
-  for (var i = 0; i < 30; i++) {
+  for (var i = 0; i < 50; i++) {
     createPlanet(gaia, rndI(10,30), rndI(0, 100));
   }
 
-  for (var i = 0; i < 5; i++) {
+  for (var i = 0; i < 7; i++) {
     dustfields.push( {
       x: rndI(0,world.wwidth),
       y: rndI(0,world.wheight),
@@ -167,14 +162,19 @@ function init() {
       midpoint: rnd(0.2,0.5)
     });
   }
-  for (var i = 0; i < 500; i++) {
+  for (var i = 0; i < 700; i++) {
     var part = {
       x: rndI(0,world.wwidth),
       y: rndI(0,world.wheight),
-      color: {r:rndI(230,255),
-        g:rndI(250,255),b:rndI(120,255),a:rndI(2,10)/10},
-     size:Math.floor(rnd(0.2,1)*100)/100};
-  //  part.star = true;
+      color: {
+        r:rndI(230,255),
+        g:rndI(250,255),
+        b:rndI(120,255),
+        a:rndI(2,10)/10
+      },
+      size:Math.floor(rnd(0.2,1)*100)/100
+    };
+    //  part.star = true;
     starfield.push(part);
   }
 
@@ -184,7 +184,6 @@ function init() {
 }
 
 function createPlanet(owner, size, ships) {
-  // TODO check that the planet does not collide with others
   var x = rndI(size,world.wwidth-size);
   var y = rndI(size,world.wheight-size);
 
@@ -214,11 +213,11 @@ function doTurn() {
     world.fleets[i].doTurn();
   }
   for (var i = 0; i < world.fleets.length; i++) {
-      if (world.fleets[i].todelete) {
-        world.fleets.splice(i,1);
-        i--;
-      }
+    if (world.fleets[i].todelete) {
+      world.fleets.splice(i,1);
+      i--;
     }
+  }
   // planets producing
   for (var i = 0; i < world.planets.length; i++) {
     produceShips(world.planets[i]);
@@ -227,7 +226,9 @@ function doTurn() {
 
   // send the turn to all active players
   for (key in sockets) {
-    update(sockets[key]);
+    if (sockets[key]) {
+      update(sockets[key]);
+    }
   }
 
 
@@ -255,9 +256,11 @@ function doTurn() {
   });
   db("hof", hallOfFame);
 
-  sockets[owner].emit("won", {
-    players:  world.players.length -1
-  });
+  if (sockets[owner] != null) {
+    sockets[owner].emit("won", {
+      players:  world.players.length -1
+    });
+  }
   resetMap();
 }
 
@@ -287,7 +290,6 @@ function produceShips(planet){
 
   // calculate the limit based on the planets a player owns
   var limit = planet.limit / Math.max(1, Math.min(5, world.players[planet.owner].planets/8));
-//  console.log("limit: "+limit+"/"+planet.limit);
   if (planet.ships <= limit) { // the planet is still able to produce
     planet.ships += Math.floor(prod);
   }
@@ -298,7 +300,6 @@ function Fleet(fromP, toP, ships, turns) {
   this.owner = world.planets[fromP].owner;
   this.toP = toP;
   this.ships = ships;
-  console.log(turns+" turns");
   this.justStarted = true;
   this.turns = turns ;// turns will be decreased by 1 to the actual count in the first turn
   this.way = turns; // length of the way
@@ -319,34 +320,21 @@ Fleet.prototype.doTurn = function() {
         owner: this.owner,
         fight: false
       });
-      console.log("shipment");
       // friendly shipment
       world.planets[this.toP].ships += this.ships;
     } else {
-      console.log("attack from "+this.owner+" to "+world.planets[this.toP].owner);
       // attack
 
       var defender = world.players[world.planets[this.toP].owner];
-      console.log(defender);
       var attackModifier =
-        (0.7+0.4*(defender.planets/world.planets.length))  // smaller players have defensive bonus
-        *(defender.online?0.7:1);      // online players have defensive bonus
+      (0.7+0.4*(defender.planets/world.planets.length))  // smaller players have defensive bonus
+      *(defender.online?0.7:1);      // online players have defensive bonus
 
-        var attackStrength = Math.floor(attackModifier*this.ships);
-
-      console.log("planets: "+defender.planets+" / "+world.planets.length);
-      console.log((defender.planets/world.planets.length));
-
-
-      console.log("planet bonus: "+ (0.7+0.4*(defender.planets/world.planets.length)));
-      console.log("attack modifier: " + attackModifier);
-      console.log("attack: " + attackStrength +" / " + this.ships);
+      var attackStrength = Math.floor(attackModifier*this.ships);
 
       if (world.planets[this.toP].ships < attackStrength) {
         // successfull attack
-        console.log("pre: "+world.planets[this.toP].ships);
         world.planets[this.toP].ships = Math.floor(this.ships - (world.planets[this.toP].ships/attackModifier)); // the rest of the ships stays on the planet
-        console.log("after: "+world.planets[this.toP].ships);
 
         var lostGuy = world.planets[this.toP].owner;
         world.players[lostGuy].planets--;
@@ -384,7 +372,7 @@ Fleet.prototype.doTurn = function() {
 
 function checkAlive(lostGuy) {
 
-  // has the
+  // has the player any planets left?
   var stillAlive = false;
   for (var i = 0; i < world.planets.length; i++) {
     if (world.planets[i].owner == lostGuy) {
@@ -393,6 +381,7 @@ function checkAlive(lostGuy) {
     }
   }
 
+  // has the player any fleets left?
   if (!stillAlive) {
     for (var i = 0; i < world.fleets.length; i++) {
       if (!world.fleets[i].todelete && world.fleets[i].owner == lostGuy) {
@@ -403,13 +392,12 @@ function checkAlive(lostGuy) {
   }
 
   if (!stillAlive) {
-    // that was his last planet
+    // this player died D:
     world.players[lostGuy].deadTil = Date.now() + 30000;
     if (sockets[lostGuy]) {
       sockets[lostGuy].emit("dead", {dead:30000});
     }
   }
-
 }
 
 // utils
@@ -432,8 +420,7 @@ var clrs = [ // get a usefull order of colors
   0.3,
   0.7,
   0.2,
-  0.9,
-
+  0.9
 ];
 function randomColor(i) {
   i-=1;
@@ -452,12 +439,12 @@ function randomColor(i) {
   var t = v * (1 - (1 - f) * s);
 
   switch(i % 6){
-      case 0: r = v, g = t, b = p; break;
-      case 1: r = q, g = v, b = p; break;
-      case 2: r = p, g = v, b = t; break;
-      case 3: r = p, g = q, b = v; break;
-      case 4: r = t, g = p, b = v; break;
-      case 5: r = v, g = p, b = q; break;
+    case 0: r = v, g = t, b = p; break;
+    case 1: r = q, g = v, b = p; break;
+    case 2: r = p, g = v, b = t; break;
+    case 3: r = p, g = q, b = v; break;
+    case 4: r = t, g = p, b = v; break;
+    case 5: r = v, g = p, b = q; break;
   }
   r = Math.max(0, Math.min(1, r));
   g = Math.max(0, Math.min(1, g));
@@ -473,12 +460,12 @@ function randomColorR(brightness, alpha){
     var r = 255-brightness;
     var n = 0|((Math.random() * r) + brightness);
     return n;
-  //  var s = n.toString(16);
+    //  var s = n.toString(16);
     //return (s.length==1) ? "0"+s : s;
   }
   return {
-  r:randomChannel(brightness),
-      g:randomChannel(brightness),
+    r:randomChannel(brightness),
+    g:randomChannel(brightness),
     b: randomChannel(brightness),
     a:alpha
   };
