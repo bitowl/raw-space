@@ -5,6 +5,48 @@
 // See http://sb.bitsnbites.eu/demo.html for an example of how to
 // use it in a demo.
 
+
+
+function loadSong() {
+  info = "loading music... 0%";
+  setTimeout(function() {
+
+    loadingStart = Date.now();
+      // load music
+      mp = new CPlayer();
+      mp.init(song);
+      genSound();
+  },500); // give time to display message
+}
+// load music
+function genSound() {
+  var progress =mp.generate();
+  info = "loading music... " + Math.floor(progress * 100) + "%";
+    if (progress <1) {
+      if (Date.now()-loadingStart > progress * 20000) {
+        // too slow
+        info = "device is too slow to synthesize music";
+        setTimeout(function() {info=null;}, 5000);
+        localStorage.musicOn = 0;
+      } else {
+        setTimeout(genSound, 100);
+      }
+    } else {
+
+      info = null;
+
+      // Put the generated song in an Audio element.
+      var wave = mp.createWave();
+      backgroundMusic = document.createElement("audio");
+      backgroundMusic.src = URL.createObjectURL(new Blob([wave], {type: "audio/wav"}));
+      backgroundMusic.loop = true;
+      if (localStorage.musicOn == 1) {
+        backgroundMusic.play();
+      }
+
+    }
+}
+
 // Song data
 var song = {
 songData: [

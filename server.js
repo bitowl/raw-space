@@ -56,8 +56,8 @@ io.on("connection", function(socket){
     secrets[myid] = secret;
      me ={
         id: myid,
-        name: data.name, // TODO add security check
-        color: randomColor(80),
+        name: data.name,
+        color: randomColor(myid),
         online: true,
         planets: 0
       };
@@ -422,14 +422,51 @@ function rndI(min, max) {
 function dist(a,b) {
   return Math.sqrt((a.x-b.x)*(a.x-b.x) + (a.y-b.y)*(a.y-b.y));
 }
-function randomColor(brightness){
-  function randomChannel(brightness){
-    var r = 255-brightness;
-    var n = 0|((Math.random() * r) + brightness);
-    var s = n.toString(16);
-    return (s.length==1) ? "0"+s : s;
+var clrs = [ // get a usefull order of colors
+  0.6,
+  0,
+  0.8,
+  0.1,
+  0.4,
+  0.5,
+  0.3,
+  0.7,
+  0.2,
+  0.9,
+
+];
+function randomColor(i) {
+  i-=1;
+  var h = clrs[i%10]+Math.abs(Math.cos(i*.5+rnd(0,1)))*0.09;
+  var s = Math.sin(i/15)*0.2  +0.8 + rnd(-0.1,0);
+  var v =Math.cos(i/39)*0.3  +0.7 + rnd(-0.2,0.1);
+
+  h = h % 1;
+
+  var r, g, b;
+
+  var i = Math.floor(h * 6);
+  var f = h * 6 - i;
+  var p = v * (1 - s);
+  var q = v * (1 - f * s);
+  var t = v * (1 - (1 - f) * s);
+
+  switch(i % 6){
+      case 0: r = v, g = t, b = p; break;
+      case 1: r = q, g = v, b = p; break;
+      case 2: r = p, g = v, b = t; break;
+      case 3: r = p, g = q, b = v; break;
+      case 4: r = t, g = p, b = v; break;
+      case 5: r = v, g = p, b = q; break;
   }
-  return randomChannel(brightness) + randomChannel(brightness) + randomChannel(brightness);
+  r = Math.max(0, Math.min(1, r));
+  g = Math.max(0, Math.min(1, g));
+  b = Math.max(0, Math.min(1, b));
+  function toHex(x) {
+    x = Math.floor(x);
+    return (x<16?"0":"")+x.toString(16);
+  }
+  return toHex(r*255)+toHex(g*255)+toHex(b*255);
 }
 function randomColorR(brightness, alpha){
   function randomChannel(brightness){
